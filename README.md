@@ -5,7 +5,59 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-End-to-end manufacturing IoT pipeline demonstrating AWS + Databricks data engineering — ingestion, Medallion ETL, Delta Lake, Unity Catalog, and CloudWatch observability.
+> **Unplanned downtime costs manufacturers an average of $260,000 per hour.** This project shows how real-time IoT sensor data, cloud streaming, and machine learning signals can identify at-risk equipment *before* it fails — turning reactive maintenance into a predictive, data-driven operation.
+
+---
+
+## What This Project Does
+
+Manufacturing equipment (motors, pumps, compressors) emits continuous sensor signals — vibration, temperature, pressure. When those signals drift outside their normal range, failure is coming. The problem is that most factories either ignore the data or look at it too late.
+
+This pipeline:
+
+1. **Ingests** live sensor readings from IoT devices every 60 seconds
+2. **Cleans and stores** the data in a governed Delta Lake (Bronze → Silver → Gold)
+3. **Computes a risk score** — a rolling 24-hour vibration z-score per device
+4. **Flags at-risk devices** (`is_at_risk = true`) before failure occurs
+5. **Alerts operations teams** via a live dashboard and CloudWatch alarms
+
+The result: maintenance teams get notified about the right equipment at the right time, not after a line has gone down.
+
+---
+
+## Technology Stack
+
+| Layer | Technology | Why |
+|---|---|---|
+| IoT Data Source | ThingSpeak Public API | Real sensor data, no infrastructure required |
+| Ingestion | Python + tenacity | Resilient polling with exponential backoff |
+| Streaming | AWS Kinesis Data Streams + Firehose | Real-time path alongside batch S3 landing |
+| Raw Storage | AWS S3 (partitioned by date/hour) | Durable, queryable, cost-efficient landing zone |
+| ETL Engine | PySpark 3.5 on Databricks | Distributed processing at any scale |
+| Table Format | Delta Lake 3.2 | ACID transactions, time travel, schema enforcement |
+| Data Catalog | Unity Catalog (Databricks) | Governance, access control, lineage |
+| Orchestration | Databricks Jobs API v2.1 | Hourly scheduled pipeline with dependency DAG |
+| Observability | AWS CloudWatch | Pipeline health metrics, alarms, SNS alerting |
+| Runtime | Databricks Runtime 14.3 LTS (Photon) | Production-grade, Photon-accelerated compute |
+
+---
+
+## Key Capabilities Demonstrated
+
+| Capability | Implementation |
+|---|---|
+| **Medallion Architecture** | Bronze (raw) → Silver (clean) → Gold (KPIs) with clear layer contracts |
+| **Streaming + Batch** | Kinesis real-time path runs in parallel with Auto Loader batch ingestion |
+| **Incremental ingestion** | Databricks Auto Loader with checkpoint-based exactly-once delivery |
+| **Data quality** | `DataQualityChecker` runs null rate, row count, and range checks at every layer |
+| **Deduplication** | MERGE upsert on `(device_id, entry_id)` — duplicates never accumulate |
+| **Predictive signal** | Rolling 24h vibration z-score; `is_at_risk` flag when z > 2.5 |
+| **Governance** | Unity Catalog external location, storage credentials, schema-level grants |
+| **Resilience** | Exponential backoff (tenacity) on all AWS SDK and HTTP calls |
+| **Idempotent infra** | All setup scripts are safe to re-run; check-before-create everywhere |
+| **Observability** | 12-widget CloudWatch dashboard + 5 pipeline alarms with SNS email |
+| **Tested** | pytest suite covering ETL transforms, data quality checks, ingestion logic |
+| **CI/CD** | GitHub Actions runs tests and linting on every push |
 
 ---
 
@@ -38,15 +90,10 @@ End-to-end manufacturing IoT pipeline demonstrating AWS + Databricks data engine
            ▼                                  ▼
 ┌──────────────────────────┐    ┌─────────────────────────────────────────┐
 │   AWS S3 (raw landing)   │    │   Kinesis Data Stream                   │
-│                          │    │   pmt-sensor-stream (1 shard)            │
-│  predictive-maintenance- │    │              │                           │
-│  twin-raw                │    │              │ Firehose delivery          │
-│  ├── raw/          ←─────│────│──────────────┘                           │
-│  ├── checkpoints/        │    │   → s3://bucket/firehose/ (partitioned)  │
-│  ├── bronze/             │    └─────────────────────────────────────────┘
-│  ├── silver/             │
-│  └── gold/               │
-└──────────┬───────────────┘
+│   raw/year=/month=/...   │    │   pmt-sensor-stream                     │
+│                          │    │         │ Firehose delivery              │
+│                          │    │         └──→ s3://bucket/firehose/       │
+└──────────┬───────────────┘    └─────────────────────────────────────────┘
            │ Auto Loader (cloudFiles)
            ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -57,16 +104,14 @@ End-to-end manufacturing IoT pipeline demonstrating AWS + Databricks data engine
 │  │  • Append-only raw JSON → Delta                                  │    │
 │  │  • Auto Loader incremental ingestion with checkpoint             │    │
 │  │  • Audit cols: _ingested_at, _source_file, _batch_id            │    │
-│  │  • Partitioned by date(recorded_at)                              │    │
 │  └────────────────────────────┬────────────────────────────────────┘    │
 │                               │ cast + parse + fill nulls + MERGE        │
 │  ┌─────────────────────────────▼──────────────────────────────────┐     │
 │  │  SILVER  (silver_sensors)                                        │    │
-│  │  • DoubleType casts for all metrics                              │    │
+│  │  • Metrics cast to DoubleType                                    │    │
 │  │  • recorded_at → UTC TimestampType                               │    │
 │  │  • Null fills: -1.0 sentinel for missing reads                   │    │
-│  │  • Dedup on (device_id, entry_id) — keep latest ingested_at     │    │
-│  │  • MERGE upsert (no duplicates ever accumulate)                  │    │
+│  │  • Dedup on (device_id, entry_id) via MERGE upsert              │    │
 │  └────────────────────────────┬────────────────────────────────────┘    │
 │                               │ aggregate + z-score + risk flag           │
 │  ┌─────────────────────────────▼──────────────────────────────────┐     │
@@ -74,11 +119,10 @@ End-to-end manufacturing IoT pipeline demonstrating AWS + Databricks data engine
 │  │  • Hourly: avg/min/max vibration, temp, pressure per device      │    │
 │  │  • Daily: same + rolling 24h z-score on vibration_rms           │    │
 │  │  • is_at_risk = vibration_zscore > 2.5  ← core PM signal        │    │
-│  │  • OPTIMIZE + ZORDER BY (device_id, date)                       │    │
-│  │  • VACUUM RETAIN 168 HOURS (7 days)                              │    │
+│  │  • OPTIMIZE + ZORDER BY (device_id, date) + VACUUM 7 days       │    │
 │  └────────────────────────────┬────────────────────────────────────┘    │
 │                               │                                          │
-│  Unity Catalog: main.predictive_maintenance.*                            │
+│  Unity Catalog: workspace.predictive_maintenance.*                       │
 └──────────────┬────────────────┴──────────────────────────────────────────┘
                │
     ┌──────────┴──────────┐
@@ -87,71 +131,106 @@ End-to-end manufacturing IoT pipeline demonstrating AWS + Databricks data engine
 │ Databricks SQL │   │   CloudWatch Monitoring                               │
 │ Dashboard      │   │                                                        │
 │                │   │   Alarms:                                              │
-│ Q1: Twin state │   │   • pmt-ingestion-stale (no records > 5 min)          │
-│ Q2: At-risk    │   │   • pmt-pipeline-errors (any error)                   │
-│    devices     │   │   • pmt-kinesis-lag (iterator age > 60s)              │
-│ Q3: 24h vibr.  │   │   • pmt-s3-errors (5xx on raw bucket)                │
-│    trend       │   │   • pmt-gold-stale (Gold not updated > 2h)            │
-│ Q4: Pipeline   │   │                                                        │
-│    health      │   │   Custom Metrics (namespace: PredictiveMaintenance):  │
-│ Q5: Daily KPI  │   │   • RecordsIngested, PipelineErrors                   │
-│    summary     │   │   • BronzeRowCount, SilverRowCount, GoldRowCount      │
-└────────────────┘   │   • AtRiskDeviceCount, MaxVibrationZScore             │
-                     │   • Bronze/Silver/GoldWriteLatencyMs                  │
-                     │   • GoldTableLastUpdate                                │
-                     │                                                        │
-                     │   SNS → pmt-pipeline-alerts → email (ALERT_EMAIL)     │
+│ • Twin state   │   │   • pmt-ingestion-stale (no records > 5 min)          │
+│ • At-risk      │   │   • pmt-pipeline-errors (any error)                   │
+│   devices      │   │   • pmt-kinesis-lag (iterator age > 60s)              │
+│ • 24h vibr.    │   │   • pmt-s3-errors (5xx on raw bucket)                │
+│   trend        │   │   • pmt-gold-stale (Gold not updated > 2h)            │
+│ • Pipeline     │   │                                                        │
+│   health       │   │   Custom Metrics (namespace: PredictiveMaintenance):  │
+│ • Daily KPI    │   │   • RecordsIngested, BronzeRowCount, SilverRowCount   │
+│   summary      │   │   • AtRiskDeviceCount, MaxVibrationZScore             │
+└────────────────┘   │   SNS → pmt-pipeline-alerts → email                  │
                      └──────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Table of Contents
+## Data Model
 
-1. [Features](#features)
-2. [Prerequisites](#prerequisites)
-3. [Quick Start](#quick-start)
-4. [Configuration](#configuration)
-5. [Project Structure](#project-structure)
-6. [Data Flow](#data-flow)
-7. [KPI Dashboard](#kpi-dashboard)
-8. [Observability](#observability)
-9. [Running Tests](#running-tests)
-10. [Portfolio Context](#portfolio-context)
+### Bronze — `bronze_sensors`
+Raw JSON as received from IoT devices. **Append-only** — the immutable source of truth. Nothing is ever modified or deleted here.
 
----
-
-## Features
-
-- **Real IoT data ingestion** from ThingSpeak public channels (no API key required)
-- **Medallion Architecture** — Bronze (raw) → Silver (clean) → Gold (KPIs) on Delta Lake
-- **Auto Loader** incremental ingestion with checkpoint-based exactly-once delivery
-- **MERGE upsert** deduplication in Silver layer using Delta Lake DML
-- **Predictive maintenance signal**: rolling 24h vibration z-score with `is_at_risk` flag
-- **Unity Catalog** governance — catalog, schema, external location, row-level grants
-- **Kinesis Data Streams + Firehose** real-time streaming path alongside S3 batch
-- **CloudWatch alarms** for pipeline freshness, lag, and error detection
-- **Custom CloudWatch metrics** published from Databricks tasks
-- **Databricks Jobs API v2.1** workflow with 4-task DAG and email alerting
-- **Idempotent infrastructure** — all AWS and Databricks setup scripts are re-runnable
-- **Exponential backoff** (tenacity) on all external API and AWS SDK calls
-- **Full type hints** and docstrings throughout
-
----
-
-## Prerequisites
-
-| Requirement | Version | Notes |
+| Column | Type | Description |
 |---|---|---|
-| Python | 3.9+ | 3.11 recommended |
-| AWS Account | — | IAM permissions for S3, Kinesis, CloudWatch, IAM |
-| Databricks Workspace | — | Unity Catalog enabled |
-| Databricks CLI | 0.18+ | `pip install databricks-cli` |
-| AWS CLI | 2.x | Optional but recommended |
+| `device_id` | STRING | Logical device identifier |
+| `entry_id` | BIGINT | Source system sequence number |
+| `recorded_at` | STRING | ISO-8601 timestamp from sensor |
+| `vibration_rms` | DOUBLE | Root-mean-square vibration (mm/s) |
+| `temperature_celsius` | DOUBLE | Temperature reading (°C) |
+| `pressure_bar` | DOUBLE | Pressure reading (bar) |
+| `_ingested_at` | TIMESTAMP | When this record hit the pipeline |
+| `_source_file` | STRING | S3 source file path |
+
+### Silver — `silver_sensors`
+Clean, typed, deduplicated. Ready for analytics and feature engineering.
+
+**Transformations:** ISO timestamp → UTC `TimestampType` · all metrics → `DoubleType` · null reads → `-1.0` sentinel · rows with null `device_id` dropped · MERGE upsert deduplication on `(device_id, entry_id)`
+
+### Gold — `gold_sensors_hourly` + `gold_sensors_daily`
+Pre-aggregated KPIs optimised for dashboard query performance.
+
+| Column | Description |
+|---|---|
+| `avg/min/max_vibration_rms` | Vibration statistics per device per window |
+| `avg/min/max_temperature_celsius` | Temperature statistics |
+| `avg/min/max_pressure_bar` | Pressure statistics |
+| `reading_count` | Number of sensor readings in the window |
+| `vibration_zscore` | Rolling 24h z-score on avg vibration per device |
+| `is_at_risk` | `true` when `vibration_zscore > 2.5` — the core maintenance alert |
+
+---
+
+## Project Structure
+
+```
+predictive-maintenance-twin/
+├── ingestion/
+│   ├── api_producer.py         # ThingSpeak poller → S3 + Kinesis
+│   ├── schema.json             # JSON Schema for one sensor reading
+│   └── config.example.yaml    # Config template (copy to config.yaml, never commit)
+├── infra/
+│   ├── s3_setup.py             # S3 bucket + versioning + lifecycle
+│   ├── kinesis_setup.py        # Kinesis stream + Firehose delivery stream
+│   ├── iam_setup.py            # IAM roles: producer, Databricks, Firehose
+│   ├── kinesis_stub.py         # Local Kinesis mock for dev/testing
+│   └── cloudwatch_alarms.py   # Pipeline health alarms + SNS topic
+├── etl/
+│   ├── utils.py                # SparkSession factory, DataQualityChecker, helpers
+│   ├── bronze_ingest.py        # Auto Loader: S3 JSON → Bronze Delta (append-only)
+│   ├── silver_transform.py     # Cast, dedupe, null-fill → Silver (MERGE upsert)
+│   └── gold_aggregate.py      # KPI aggregations, z-score, risk flag → Gold
+├── databricks/
+│   ├── unity_catalog_setup.py  # Catalog, schema, external location, grants
+│   ├── workflow_config.json    # Databricks Jobs API v2.1 — 4-task DAG
+│   ├── dashboard_query.sql     # 5 Databricks SQL dashboard queries
+│   └── deploy.sh               # Idempotent CLI deploy script
+├── observability/
+│   ├── cloudwatch_dashboard.json  # 12-widget CloudWatch dashboard
+│   └── custom_metrics.py          # Publishes Gold KPIs to CloudWatch
+├── tests/
+│   ├── conftest.py             # Session-scoped SparkSession fixture
+│   ├── test_data_quality.py   # DataQualityChecker unit tests
+│   ├── test_silver.py         # SilverTransformer transformation tests
+│   ├── test_gold.py           # GoldAggregator transformation tests
+│   └── test_ingestion.py      # Pure-Python ingestion logic tests
+├── requirements.txt            # Pinned Python dependencies
+└── pytest.ini                  # Test discovery configuration
+```
 
 ---
 
 ## Quick Start
+
+### Prerequisites
+
+| Requirement | Version |
+|---|---|
+| Python | 3.9+ (3.11 recommended) |
+| AWS Account | IAM permissions for S3, Kinesis, CloudWatch, IAM |
+| Databricks Workspace | Unity Catalog enabled |
+| Databricks CLI | 0.18+ |
+| AWS CLI | 2.x |
 
 ### 1. Clone and install
 
@@ -173,182 +252,39 @@ export ALERT_EMAIL="you@example.com"
 export AWS_IAM_ROLE_ARN="arn:aws:iam::123456789012:role/pmt-databricks-role"
 ```
 
-### 3. Set up AWS infrastructure
+### 3. Provision AWS infrastructure
 
 ```bash
-# Create S3 bucket (idempotent)
-python infra/s3_setup.py --dry-run   # preview
-python infra/s3_setup.py
-
-# Create IAM roles
-python infra/iam_setup.py --dry-run
-python infra/iam_setup.py --output-arns
-
-# Create Kinesis stream
-python infra/kinesis_setup.py --dry-run
-python infra/kinesis_setup.py --iam-role-arn $AWS_IAM_ROLE_ARN
-
-# Create CloudWatch alarms
-python infra/cloudwatch_alarms.py --dry-run
-python infra/cloudwatch_alarms.py
+python infra/s3_setup.py --dry-run && python infra/s3_setup.py
+python infra/iam_setup.py --dry-run && python infra/iam_setup.py
+python infra/kinesis_setup.py --dry-run && python infra/kinesis_setup.py
+python infra/cloudwatch_alarms.py --dry-run && python infra/cloudwatch_alarms.py
 ```
 
-### 4. Set up Databricks Unity Catalog
+### 4. Deploy Databricks Unity Catalog and workflow
 
 ```bash
-python databricks/unity_catalog_setup.py --dry-run
 python databricks/unity_catalog_setup.py --iam-role-arn $AWS_IAM_ROLE_ARN
-```
-
-### 5. Start the ingestion producer
-
-```bash
-# Test with a single poll (--once) and dry-run
-python ingestion/api_producer.py --once --dry-run
-
-# Run continuously (polls every 60s, writes to S3 + Kinesis)
-python ingestion/api_producer.py
-```
-
-### 6. Run the ETL pipeline manually
-
-```bash
-# In Databricks notebook or cluster
-python etl/bronze_ingest.py --trigger-once
-python etl/silver_transform.py
-python etl/gold_aggregate.py
-```
-
-### 7. Deploy the Databricks workflow
-
-```bash
-# Preview deployment
-./databricks/deploy.sh --dry-run
-
-# Deploy to production
 ./databricks/deploy.sh --env prod
 ```
 
-### 8. Open the Databricks SQL Dashboard
+### 5. Start ingestion
 
-Import `databricks/dashboard_query.sql` into a new Databricks SQL Dashboard with 5 widgets. The job runs hourly and refreshes all Gold tables automatically.
+```bash
+# Single poll, no AWS writes — verify connectivity
+python ingestion/api_producer.py --once --dry-run
 
----
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `AWS_REGION` | `us-east-1` | AWS region for all services |
-| `PMT_S3_BUCKET` | `predictive-maintenance-twin-raw` | Raw landing zone S3 bucket |
-| `S3_PREFIX` | `raw` | S3 key prefix for raw files |
-| `KINESIS_STREAM` | `pmt-sensor-stream` | Kinesis stream name (empty = disable) |
-| `DATABRICKS_HOST` | — | Databricks workspace URL |
-| `DATABRICKS_TOKEN` | — | Databricks PAT or OAuth token |
-| `DATABRICKS_CATALOG` | `main` | Unity Catalog catalog |
-| `DATABRICKS_SCHEMA` | `predictive_maintenance` | Unity Catalog schema |
-| `AWS_IAM_ROLE_ARN` | — | IAM role ARN for Databricks → S3 |
-| `ALERT_EMAIL` | — | Email for SNS alarm notifications |
-| `CONFIG_PATH` | `ingestion/config.example.yaml` | Ingestion config file path |
-| `LOG_LEVEL` | `INFO` | Python logging level |
-| `DRY_RUN` | `false` | Skip all writes when `true` |
-
-### Config File
-
-Copy `ingestion/config.example.yaml` to `ingestion/config.yaml` and update the channel list and AWS settings. The file has detailed inline comments for every option.
-
----
-
-## Project Structure
-
-```
-predictive-maintenance-twin/
-├── requirements.txt                  # Pinned Python dependencies
-├── ingestion/
-│   ├── api_producer.py               # ThingSpeak poller → S3 + Kinesis
-│   ├── schema.json                   # JSON Schema draft-07 for sensor readings
-│   └── config.example.yaml          # Config template (copy to config.yaml)
-├── infra/
-│   ├── s3_setup.py                   # S3 bucket + lifecycle + folder structure
-│   ├── kinesis_stub.py               # Local Kinesis mock for dev/testing
-│   ├── kinesis_setup.py              # Kinesis stream + Firehose setup
-│   ├── iam_setup.py                  # IAM roles for producer + Databricks + Firehose
-│   └── cloudwatch_alarms.py         # Pipeline health alarms + SNS topic
-├── etl/
-│   ├── utils.py                      # Spark helpers, DQ checks, metric publisher
-│   ├── bronze_ingest.py              # Auto Loader: S3 JSON → Bronze Delta (append)
-│   ├── silver_transform.py           # Clean/dedupe/type-cast → Silver (MERGE)
-│   └── gold_aggregate.py            # KPI aggregations → Gold + OPTIMIZE/ZORDER
-├── databricks/
-│   ├── unity_catalog_setup.py        # Catalog, schema, external location, grants
-│   ├── workflow_config.json          # Databricks Jobs API v2.1 workflow payload
-│   ├── dashboard_query.sql           # 5 Databricks SQL dashboard queries
-│   └── deploy.sh                     # Idempotent CLI deploy script
-├── observability/
-│   ├── cloudwatch_dashboard.json     # CloudWatch dashboard with 12 widgets
-│   ├── cloudwatch_alarms.py         # (see infra/cloudwatch_alarms.py)
-│   └── custom_metrics.py            # Publishes pipeline KPIs to CloudWatch
-└── skill/
-    ├── SKILL.md                      # Orchestrator skill definition
-    └── agents/
-        ├── api-ingestion-agent.md
-        ├── aws-infra-agent.md
-        ├── pyspark-etl-agent.md
-        └── databricks-agent.md
+# Continuous production polling (every 60s)
+python ingestion/api_producer.py
 ```
 
----
+### 6. Run tests
 
-## Data Flow
-
-### Bronze Layer (`bronze_sensors`)
-Raw JSON exactly as received from ThingSpeak, enriched with audit columns. **Append-only** — no data is ever modified or deleted at this layer. Serves as the immutable source of truth.
-
-| Column | Type | Source |
-|---|---|---|
-| device_id | STRING | Channel config mapping |
-| entry_id | BIGINT | ThingSpeak entry_id |
-| recorded_at | STRING | ThingSpeak created_at (raw string) |
-| vibration_rms | DOUBLE | field1 |
-| temperature_celsius | DOUBLE | field2 |
-| pressure_bar | DOUBLE | field3 |
-| source_channel | INT | ThingSpeak channel ID |
-| _ingested_at | TIMESTAMP | ETL processing time |
-| _source_file | STRING | S3 file path |
-
-### Silver Layer (`silver_sensors`)
-Clean, typed, deduplicated data. Ready for analytics and ML features.
-
-**Transformations applied:**
-- `recorded_at` string → UTC `TimestampType`
-- All metrics cast to `DoubleType`
-- Null metric values filled with `-1.0` sentinel
-- Rows with null `device_id` dropped
-- Deduplication on `(device_id, entry_id)` via MERGE upsert
-
-### Gold Layer (`gold_sensors_hourly`, `gold_sensors_daily`)
-Pre-aggregated KPIs. Optimised for dashboard query performance.
-
-**Predictive maintenance features:**
-- `avg/min/max vibration_rms` per device per hour/day
-- `vibration_zscore`: rolling 24h z-score per device
-- `is_at_risk`: `vibration_zscore > 2.5` — the core maintenance signal
-
----
-
-## KPI Dashboard
-
-Five Databricks SQL queries power the dashboard:
-
-| Widget | Query | Purpose |
-|---|---|---|
-| 1 | Current Twin State | Latest reading per device with data freshness indicator |
-| 2 | At-Risk Devices | Devices with `vibration_zscore > 2.5` in last 7 days |
-| 3 | 24h Vibration Trend | Hourly vibration time series per device |
-| 4 | Pipeline Health | Row counts Bronze → Silver → Gold with data lag |
-| 5 | Daily Summary | 30-day daily KPI table with all metrics and risk flags |
+```bash
+pytest                               # full suite (requires PySpark)
+pytest tests/test_ingestion.py       # pure-Python tests only, no Spark needed
+pytest --cov=etl --cov=ingestion tests/
+```
 
 ---
 
@@ -356,58 +292,36 @@ Five Databricks SQL queries power the dashboard:
 
 ### CloudWatch Alarms
 
-| Alarm | Metric | Threshold | Action |
-|---|---|---|---|
-| `pmt-ingestion-stale` | RecordsIngested sum | < 1 in 5 min | SNS email |
-| `pmt-pipeline-errors` | PipelineErrors sum | ≥ 1 in 5 min | SNS email |
-| `pmt-kinesis-lag` | IteratorAgeMilliseconds | > 60,000 ms | SNS email |
-| `pmt-s3-errors` | S3 5xxErrors | ≥ 1 in 5 min | SNS email |
-| `pmt-gold-stale` | GoldTableLastUpdate | > 2 hours old | SNS email |
+| Alarm | Triggers When | Action |
+|---|---|---|
+| `pmt-ingestion-stale` | No records ingested in 5 min | SNS email |
+| `pmt-pipeline-errors` | Any pipeline error logged | SNS email |
+| `pmt-kinesis-lag` | Iterator age > 60,000 ms | SNS email |
+| `pmt-s3-errors` | S3 5xx errors on raw bucket | SNS email |
+| `pmt-gold-stale` | Gold table not updated in 2h | SNS email |
 
 ### CloudWatch Dashboard
-Import `observability/cloudwatch_dashboard.json` via the CloudWatch console (Dashboards → Create dashboard → Source JSON). Provides 12 widgets across 4 rows.
+
+Import `observability/cloudwatch_dashboard.json` into the CloudWatch console (Dashboards → Create dashboard → Source JSON) for a 12-widget live view of pipeline health, ingestion rates, and device risk status.
+
+### Databricks SQL Dashboard
+
+Import `databricks/dashboard_query.sql` into Databricks SQL for five widgets: current device state, at-risk device list, 24h vibration trend, pipeline health, and daily KPI summary.
 
 ---
 
-## Running Tests
+## Environment Variables Reference
 
-```bash
-# Run all tests
-pytest
-
-# With coverage report
-pytest --cov=. --cov-report=html
-
-# Test the ingestion producer locally (no AWS writes)
-python ingestion/api_producer.py --once --dry-run
-
-# Test the Kinesis stub
-python infra/kinesis_stub.py
-
-# Test infra scripts in dry-run mode
-python infra/s3_setup.py --dry-run
-python infra/iam_setup.py --dry-run
-python infra/kinesis_setup.py --dry-run
-python infra/cloudwatch_alarms.py --dry-run
-```
-
----
-
-## Portfolio Context
-
-This project demonstrates a production-grade data engineering stack end-to-end:
-
-| Skill | Demonstrated By |
-|---|---|
-| **PySpark** | Medallion ETL with window functions, MERGE, OPTIMIZE |
-| **Delta Lake** | Bronze/Silver/Gold tables, time travel, VACUUM |
-| **Unity Catalog** | External location, storage credential, schema grants |
-| **Databricks Auto Loader** | Incremental S3 ingestion with schema enforcement |
-| **Databricks Jobs API** | Multi-task workflow with dependency DAG |
-| **AWS S3** | Partitioned raw landing zone, lifecycle policies |
-| **AWS Kinesis** | Real-time streaming path + Firehose → S3 |
-| **AWS IAM** | Least-privilege roles for producer, Databricks, Firehose |
-| **AWS CloudWatch** | Custom metrics, alarms, dashboard, SNS alerting |
-| **Medallion Architecture** | Bronze → Silver → Gold with clear layer contracts |
-| **Predictive Maintenance** | Vibration z-score, rolling statistics, risk flagging |
-| **Production Code Quality** | Type hints, docstrings, retry, idempotency, DQ checks |
+| Variable | Default | Description |
+|---|---|---|
+| `AWS_REGION` | `us-east-1` | AWS region for all services |
+| `PMT_S3_BUCKET` | `predictive-maintenance-twin-raw` | Raw landing zone S3 bucket |
+| `KINESIS_STREAM` | `pmt-sensor-stream` | Kinesis stream name (empty string = disable) |
+| `DATABRICKS_HOST` | — | Databricks workspace URL |
+| `DATABRICKS_TOKEN` | — | Databricks PAT or OAuth token |
+| `DATABRICKS_CATALOG` | `workspace` | Unity Catalog catalog name |
+| `DATABRICKS_SCHEMA` | `predictive_maintenance` | Unity Catalog schema name |
+| `AWS_IAM_ROLE_ARN` | — | IAM role ARN for Databricks → S3 access |
+| `ALERT_EMAIL` | — | Email address for SNS alarm notifications |
+| `LOG_LEVEL` | `INFO` | Python logging verbosity |
+| `DRY_RUN` | `false` | Set to `true` to skip all AWS writes |
