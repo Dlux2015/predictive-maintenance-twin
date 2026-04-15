@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17 (required by PySpark)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pure-Python tests (no Spark required)
+        run: pytest tests/test_ingestion.py -v --tb=short
+
+      - name: Run Spark unit tests
+        env:
+          SPARK_LOCAL_IP: "127.0.0.1"
+          PYSPARK_SUBMIT_ARGS: "--master local[1] pyspark-shell"
+        run: pytest tests/test_data_quality.py tests/test_silver.py tests/test_gold.py -v --tb=short
+
+      - name: Coverage report
+        run: |
+          pip install pytest-cov
+          pytest --cov=etl --cov=ingestion --cov-report=xml --cov-report=term-missing -q
+        env:
+          SPARK_LOCAL_IP: "127.0.0.1"
+          PYSPARK_SUBMIT_ARGS: "--master local[1] pyspark-shell"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install lint dependencies
+        run: pip install black mypy types-requests types-PyYAML ruff
+
+      - name: Black (format check)
+        run: black --check --diff .
+
+      - name: Ruff (linting)
+        run: ruff check .
+
+      - name: Mypy (type checking)
+        run: mypy etl/ ingestion/ --ignore-missing-imports --no-strict-optional

@@ -1,0 +1,22 @@
+# Ruff linter configuration
+# https://docs.astral.sh/ruff/configuration/
+
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long — handled by black
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["F401"]  # allow unused imports in test files
