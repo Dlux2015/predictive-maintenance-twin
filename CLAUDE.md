@@ -8,9 +8,9 @@ Project context for future Claude Code sessions. Read this before making any cha
 
 **What:** Manufacturing Predictive Maintenance Digital Twin — a portfolio-quality data engineering project.
 
-**Why:** Demonstrating the Wavicle Data Solutions core stack (AWS + Databricks) for a job application. Every technical decision should reinforce this positioning.
+**Why:** Demonstrating a production-grade AWS + Databricks data engineering stack. Every technical decision reinforces real-world engineering quality.
 
-**Target audience:** Wavicle Data Solutions technical hiring team. They care about: PySpark, Delta Lake, Unity Catalog, Databricks Auto Loader, AWS (S3/Kinesis/CloudWatch), Medallion Architecture, and production code quality.
+**Target audience:** Data engineering hiring teams. They care about: PySpark, Delta Lake, Unity Catalog, Databricks Auto Loader, AWS (S3/Kinesis/CloudWatch), Medallion Architecture, and production code quality.
 
 ---
 

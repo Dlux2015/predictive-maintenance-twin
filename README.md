@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-End-to-end manufacturing IoT pipeline demonstrating AWS + Databricks data engineering — ingestion, Medallion ETL, Delta Lake, Unity Catalog, and CloudWatch observability — built as a portfolio project targeting **Wavicle Data Solutions**.
+End-to-end manufacturing IoT pipeline demonstrating AWS + Databricks data engineering — ingestion, Medallion ETL, Delta Lake, Unity Catalog, and CloudWatch observability.
 
 ---
 
@@ -395,7 +395,7 @@ python infra/cloudwatch_alarms.py --dry-run
 
 ## Portfolio Context
 
-This project demonstrates the **Wavicle Data Solutions core stack** end-to-end:
+This project demonstrates a production-grade data engineering stack end-to-end:
 
 | Skill | Demonstrated By |
 |---|---|
