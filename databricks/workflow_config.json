@@ -1,0 +1,149 @@
+{
+  "name": "pmt-predictive-maintenance-pipeline",
+  "description": "Predictive Maintenance Digital Twin — hourly ETL pipeline (Bronze → Silver → Gold → Metrics)",
+  "schedule": {
+    "quartz_cron_expression": "0 0 * * * ?",
+    "timezone_id": "UTC",
+    "pause_status": "UNPAUSED"
+  },
+  "tags": {
+    "project": "predictive-maintenance-twin",
+    "env": "prod",
+    "owner": "data-engineering",
+    "cost-center": "manufacturing-iot"
+  },
+  "email_notifications": {
+    "on_failure": ["${ALERT_EMAIL}"],
+    "on_start": [],
+    "on_success": [],
+    "no_alert_for_skipped_runs": false
+  },
+  "webhook_notifications": {},
+  "timeout_seconds": 3600,
+  "max_concurrent_runs": 1,
+  "format": "MULTI_TASK",
+  "job_clusters": [
+    {
+      "job_cluster_key": "pmt-cluster",
+      "new_cluster": {
+        "spark_version": "14.3.x-scala2.12",
+        "node_type_id": "m5.xlarge",
+        "driver_node_type_id": "m5.xlarge",
+        "autoscale": {
+          "min_workers": 2,
+          "max_workers": 8
+        },
+        "spark_conf": {
+          "spark.databricks.delta.preview.enabled": "true",
+          "spark.sql.extensions": "io.delta.sql.DeltaSparkSessionExtension",
+          "spark.sql.catalog.spark_catalog": "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+        },
+        "aws_attributes": {
+          "first_on_demand": 1,
+          "availability": "SPOT_WITH_FALLBACK",
+          "zone_id": "us-east-1a",
+          "ebs_volume_type": "GENERAL_PURPOSE_SSD",
+          "ebs_volume_count": 3,
+          "ebs_volume_size": 100
+        },
+        "spark_env_vars": {
+          "DATABRICKS_CATALOG": "main",
+          "DATABRICKS_SCHEMA": "predictive_maintenance",
+          "AWS_REGION": "us-east-1",
+          "S3_BUCKET": "predictive-maintenance-twin-raw"
+        },
+        "enable_elastic_disk": true,
+        "data_security_mode": "SINGLE_USER",
+        "runtime_engine": "PHOTON"
+      }
+    }
+  ],
+  "libraries": [
+    {"pypi": {"package": "boto3==1.34.*"}},
+    {"pypi": {"package": "tenacity==8.3.*"}},
+    {"pypi": {"package": "pyyaml==6.0.*"}},
+    {"pypi": {"package": "requests==2.32.*"}},
+    {"pypi": {"package": "great_expectations==0.18.*"}},
+    {"pypi": {"package": "databricks-sql-connector==3.3.*"}}
+  ],
+  "tasks": [
+    {
+      "task_key": "bronze_ingest",
+      "description": "Auto Loader: raw JSON from S3 → Bronze Delta table (append-only)",
+      "job_cluster_key": "pmt-cluster",
+      "spark_python_task": {
+        "python_file": "etl/bronze_ingest.py",
+        "parameters": ["--trigger-once"]
+      },
+      "libraries": [],
+      "timeout_seconds": 900,
+      "max_retries": 2,
+      "min_retry_interval_millis": 60000,
+      "retry_on_timeout": true,
+      "email_notifications": {}
+    },
+    {
+      "task_key": "silver_transform",
+      "description": "Clean, deduplicate, type-cast Bronze → Silver (MERGE upsert)",
+      "job_cluster_key": "pmt-cluster",
+      "depends_on": [
+        {"task_key": "bronze_ingest"}
+      ],
+      "spark_python_task": {
+        "python_file": "etl/silver_transform.py",
+        "parameters": []
+      },
+      "libraries": [],
+      "timeout_seconds": 900,
+      "max_retries": 2,
+      "min_retry_interval_millis": 60000,
+      "retry_on_timeout": true,
+      "email_notifications": {}
+    },
+    {
+      "task_key": "gold_aggregate",
+      "description": "KPI aggregations Silver → Gold hourly + daily (z-score + at-risk flag)",
+      "job_cluster_key": "pmt-cluster",
+      "depends_on": [
+        {"task_key": "silver_transform"}
+      ],
+      "spark_python_task": {
+        "python_file": "etl/gold_aggregate.py",
+        "parameters": []
+      },
+      "libraries": [],
+      "timeout_seconds": 1200,
+      "max_retries": 2,
+      "min_retry_interval_millis": 60000,
+      "retry_on_timeout": true,
+      "email_notifications": {}
+    },
+    {
+      "task_key": "publish_metrics",
+      "description": "Publish pipeline health KPIs to CloudWatch",
+      "job_cluster_key": "pmt-cluster",
+      "depends_on": [
+        {"task_key": "gold_aggregate"}
+      ],
+      "spark_python_task": {
+        "python_file": "observability/custom_metrics.py",
+        "parameters": ["--region", "us-east-1"]
+      },
+      "libraries": [],
+      "timeout_seconds": 300,
+      "max_retries": 1,
+      "min_retry_interval_millis": 30000,
+      "retry_on_timeout": false,
+      "email_notifications": {}
+    }
+  ],
+  "run_as": {
+    "service_principal_name": "${DATABRICKS_SP_APP_ID}"
+  },
+  "access_control_list": [
+    {
+      "group_name": "data-engineering",
+      "permission_level": "CAN_MANAGE"
+    }
+  ]
+}

@@ -1,0 +1,279 @@
+{
+  "start": "-PT3H",
+  "periodOverride": "inherit",
+  "widgets": [
+    {
+      "type": "text",
+      "x": 0,
+      "y": 0,
+      "width": 24,
+      "height": 1,
+      "properties": {
+        "markdown": "# Predictive Maintenance Digital Twin — Pipeline Health Dashboard\nNamespace: `PredictiveMaintenance` | Stream: `pmt-sensor-stream` | Bucket: `predictive-maintenance-twin-raw`"
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 1,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Records Ingested (5-min sum)",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          ["PredictiveMaintenance", "RecordsIngested", {"stat": "Sum", "period": 300, "label": "Records Ingested"}]
+        ],
+        "period": 300,
+        "stat": "Sum",
+        "region": "us-east-1",
+        "annotations": {
+          "horizontal": [
+            {"color": "#ff6961", "label": "Stale threshold", "value": 1, "fill": "below"}
+          ]
+        },
+        "yAxis": {"left": {"min": 0, "label": "Records"}},
+        "legend": {"position": "bottom"}
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 1,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Pipeline Errors (5-min sum)",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          ["PredictiveMaintenance", "PipelineErrors", {"stat": "Sum", "period": 300, "color": "#d62728", "label": "Pipeline Errors"}]
+        ],
+        "period": 300,
+        "stat": "Sum",
+        "region": "us-east-1",
+        "annotations": {
+          "horizontal": [
+            {"color": "#ff6961", "label": "Alert threshold", "value": 1, "fill": "above"}
+          ]
+        },
+        "yAxis": {"left": {"min": 0, "label": "Errors"}},
+        "legend": {"position": "bottom"}
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 16,
+      "y": 1,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Kinesis Iterator Age (ms)",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          ["AWS/Kinesis", "GetRecords.IteratorAgeMilliseconds", "StreamName", "pmt-sensor-stream", {"stat": "Maximum", "period": 300, "color": "#ff7f0e", "label": "Max Iterator Age"}]
+        ],
+        "period": 300,
+        "stat": "Maximum",
+        "region": "us-east-1",
+        "annotations": {
+          "horizontal": [
+            {"color": "#ff6961", "label": "Lag alarm threshold (60s)", "value": 60000, "fill": "above"}
+          ]
+        },
+        "yAxis": {"left": {"min": 0, "label": "Milliseconds"}},
+        "legend": {"position": "bottom"}
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 7,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Bronze Write Latency (ms)",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          ["PredictiveMaintenance", "BronzeWriteLatencyMs", {"stat": "Average", "period": 300, "color": "#cd853f", "label": "Avg Bronze Latency"}],
+          ["PredictiveMaintenance", "BronzeWriteLatencyMs", {"stat": "p99", "period": 300, "color": "#8b4513", "label": "p99 Bronze Latency"}]
+        ],
+        "period": 300,
+        "region": "us-east-1",
+        "yAxis": {"left": {"min": 0, "label": "Milliseconds"}},
+        "legend": {"position": "bottom"}
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 7,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Silver Write Latency (ms)",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          ["PredictiveMaintenance", "SilverWriteLatencyMs", {"stat": "Average", "period": 300, "color": "#4169e1", "label": "Avg Silver Latency"}],
+          ["PredictiveMaintenance", "SilverWriteLatencyMs", {"stat": "p99", "period": 300, "color": "#00008b", "label": "p99 Silver Latency"}]
+        ],
+        "period": 300,
+        "region": "us-east-1",
+        "yAxis": {"left": {"min": 0, "label": "Milliseconds"}},
+        "legend": {"position": "bottom"}
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 16,
+      "y": 7,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Gold Write Latency (ms)",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          ["PredictiveMaintenance", "GoldWriteLatencyMs", {"stat": "Average", "period": 300, "color": "#2ca02c", "label": "Avg Gold Latency"}],
+          ["PredictiveMaintenance", "GoldWriteLatencyMs", {"stat": "p99", "period": 300, "color": "#006400", "label": "p99 Gold Latency"}]
+        ],
+        "period": 300,
+        "region": "us-east-1",
+        "yAxis": {"left": {"min": 0, "label": "Milliseconds"}},
+        "legend": {"position": "bottom"}
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 13,
+      "width": 6,
+      "height": 4,
+      "properties": {
+        "title": "Bronze Row Count",
+        "view": "singleValue",
+        "sparkline": true,
+        "metrics": [
+          ["PredictiveMaintenance", "BronzeRowCount", {"stat": "Maximum", "period": 3600, "label": "Bronze Rows"}]
+        ],
+        "period": 3600,
+        "region": "us-east-1"
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 6,
+      "y": 13,
+      "width": 6,
+      "height": 4,
+      "properties": {
+        "title": "Silver Row Count",
+        "view": "singleValue",
+        "sparkline": true,
+        "metrics": [
+          ["PredictiveMaintenance", "SilverRowCount", {"stat": "Maximum", "period": 3600, "label": "Silver Rows"}]
+        ],
+        "period": 3600,
+        "region": "us-east-1"
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 13,
+      "width": 6,
+      "height": 4,
+      "properties": {
+        "title": "Gold Hourly Row Count",
+        "view": "singleValue",
+        "sparkline": true,
+        "metrics": [
+          ["PredictiveMaintenance", "GoldHourlyRowCount", {"stat": "Maximum", "period": 3600, "label": "Gold Hourly Rows"}]
+        ],
+        "period": 3600,
+        "region": "us-east-1"
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 18,
+      "y": 13,
+      "width": 6,
+      "height": 4,
+      "properties": {
+        "title": "Gold Daily Row Count",
+        "view": "singleValue",
+        "sparkline": true,
+        "metrics": [
+          ["PredictiveMaintenance", "GoldDailyRowCount", {"stat": "Maximum", "period": 3600, "label": "Gold Daily Rows"}]
+        ],
+        "period": 3600,
+        "region": "us-east-1"
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 17,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "At-Risk Device Count",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          ["PredictiveMaintenance", "AtRiskDeviceCount", {"stat": "Maximum", "period": 3600, "color": "#d62728", "label": "At-Risk Devices"}]
+        ],
+        "period": 3600,
+        "region": "us-east-1",
+        "annotations": {
+          "horizontal": [
+            {"color": "#ff6961", "label": "Alert: any at-risk device", "value": 1, "fill": "above"}
+          ]
+        },
+        "yAxis": {"left": {"min": 0, "label": "Devices"}},
+        "legend": {"position": "bottom"}
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 17,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Max Vibration Z-Score (All Devices)",
+        "view": "timeSeries",
+        "stacked": false,
+        "metrics": [
+          ["PredictiveMaintenance", "MaxVibrationZScore", {"stat": "Maximum", "period": 3600, "color": "#ff7f0e", "label": "Max Z-Score"}]
+        ],
+        "period": 3600,
+        "region": "us-east-1",
+        "annotations": {
+          "horizontal": [
+            {"color": "#d62728", "label": "At-risk threshold (z=2.5)", "value": 2.5, "fill": "above"}
+          ]
+        },
+        "yAxis": {"left": {"label": "Z-Score"}},
+        "legend": {"position": "bottom"}
+      }
+    }
+  ]
+}

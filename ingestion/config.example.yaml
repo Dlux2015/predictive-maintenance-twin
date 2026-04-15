@@ -1,0 +1,110 @@
+# =============================================================================
+# Predictive Maintenance Digital Twin – Ingestion Configuration Template
+#
+# USAGE:
+#   1. Copy this file to config.yaml (already in .gitignore).
+#   2. Fill in real values or point to environment variables (see notes below).
+#   3. For local dev, put secrets in .env and load with python-dotenv;
+#      never commit .env or config.yaml.
+#   4. In CI/CD and Databricks, inject secrets via AWS Secrets Manager or
+#      Databricks Secret Scopes — do NOT hard-code credentials here.
+#
+# DRY-RUN MODE:
+#   Set env var DRY_RUN=true (or pass --dry-run on the CLI).
+#   When active, the poller fetches ThingSpeak data but skips all writes to
+#   S3 and Kinesis. Useful for integration testing without AWS charges.
+# =============================================================================
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ThingSpeak polling configuration
+# ─────────────────────────────────────────────────────────────────────────────
+thingspeak:
+  # Base URL for the ThingSpeak public API. Change only if using a private
+  # ThingSpeak server (on-premise or enterprise instance).
+  base_url: "https://api.thingspeak.com"
+
+  # How often (in seconds) to poll each channel for new entries.
+  # ThingSpeak free tier updates every ~15 s; 60 s is a respectful interval.
+  poll_interval_seconds: 60
+
+  # Number of results to request per poll call (?results=N).
+  # Set to 1 to fetch only the latest entry; increase to backfill on startup.
+  results_per_poll: 1
+
+  # List of ThingSpeak channels to monitor.
+  # Each entry maps a ThingSpeak channel to a logical device_id used in the
+  # Delta table and downstream KPI aggregations.
+  #
+  # IMPORTANT: If a channel requires an API read key, do NOT add it here.
+  # Set env var THINGSPEAK_READ_KEY_<CHANNEL_ID>=<key>
+  # (e.g. THINGSPEAK_READ_KEY_276330=abc123) and the poller will pick it up.
+  channels:
+    - id: 9                          # ThingSpeak numeric channel ID
+      name: "temperature_sensor_01"  # Human-readable label (used in logs)
+      device_id: "device-001"        # Must match device_id in schema.json
+
+    - id: 276330
+      name: "vibration_sensor_01"
+      device_id: "device-002"
+
+    - id: 9                          # Simulated third device using channel 9
+      name: "pressure_sensor_01"     # Treated as independent device in pipeline
+      device_id: "device-003"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AWS configuration
+# Credentials: NEVER put AWS keys here. Use one of:
+#   - IAM instance/task role (recommended for EC2 / ECS / Databricks)
+#   - Env vars: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN
+#   - ~/.aws/credentials (local dev only, never on shared machines)
+# ─────────────────────────────────────────────────────────────────────────────
+aws:
+  # AWS region for all services (S3, Kinesis, CloudWatch).
+  # Override with environment variable: AWS_REGION or AWS_DEFAULT_REGION
+  region: "us-east-1"
+
+  # S3 bucket that receives raw JSON sensor records.
+  # Override with environment variable: PMT_S3_BUCKET
+  s3_bucket: "predictive-maintenance-twin-raw"
+
+  # S3 key prefix. Final path:
+  #   s3://<s3_bucket>/<s3_prefix>/year=YYYY/month=MM/day=DD/hour=HH/<uuid>.json
+  # Override with environment variable: PMT_S3_PREFIX
+  s3_prefix: "raw"
+
+  # Kinesis Data Stream name for real-time ingestion path.
+  # Set to empty string ("") to disable Kinesis and write S3 only.
+  # Override with environment variable: PMT_KINESIS_STREAM
+  kinesis_stream: "pmt-sensor-stream"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Retry / backoff
+# Applied to ThingSpeak HTTP calls and AWS SDK calls via tenacity.
+# Uses full-jitter exponential backoff: delay = random(0, min(cap, base*2^n))
+# ─────────────────────────────────────────────────────────────────────────────
+retry:
+  # Total attempts before the poller raises a hard error.
+  # Includes first attempt (max_attempts=5 means 1 try + 4 retries).
+  max_attempts: 5
+
+  # Base delay in seconds for the first retry interval.
+  base_delay_seconds: 1
+
+  # Upper cap on delay (seconds). Prevents runaway backoff during outages.
+  max_delay_seconds: 32
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Logging
+# Override log level at runtime with environment variable: LOG_LEVEL
+# ─────────────────────────────────────────────────────────────────────────────
+logging:
+  # Verbosity: DEBUG | INFO | WARNING | ERROR | CRITICAL
+  # Use DEBUG locally; keep INFO or WARNING in production.
+  level: "INFO"
+
+  # Python logging format string.
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

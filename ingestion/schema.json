@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SensorReading",
+  "description": "A single raw sensor reading ingested from a ThingSpeak channel and written to S3. Each record represents one ThingSpeak feed entry after field mapping and normalization.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["device_id", "entry_id", "recorded_at"],
+  "properties": {
+    "device_id": {
+      "type": "string",
+      "description": "Logical device identifier assigned in config (e.g. 'device-001'). Used as the primary partition key in the Delta table and dedup merge key."
+    },
+    "entry_id": {
+      "type": "integer",
+      "description": "ThingSpeak entry_id for this feed record. Monotonically increasing per channel; used as the natural deduplication key when upserting into Delta Lake (MERGE on device_id + entry_id)."
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp of when the sensor recorded the reading. Mapped from ThingSpeak 'created_at'. Stored in UTC throughout the pipeline."
+    },
+    "vibration_rms": {
+      "type": ["number", "null"],
+      "description": "Root-mean-square vibration amplitude in millimetres per second (mm/s). Mapped from ThingSpeak field1. Null when the sensor did not report a value. Silver layer fills null with -1.0 sentinel."
+    },
+    "temperature_celsius": {
+      "type": ["number", "null"],
+      "description": "Ambient or component temperature in degrees Celsius (°C). Mapped from ThingSpeak field2. Null when the sensor did not report a value. Silver layer fills null with -1.0 sentinel."
+    },
+    "pressure_bar": {
+      "type": ["number", "null"],
+      "description": "Fluid or gas pressure in bar (bar). Mapped from ThingSpeak field3. Null when the sensor did not report a value. Silver layer fills null with -1.0 sentinel."
+    },
+    "source_channel": {
+      "type": "integer",
+      "description": "The numeric ThingSpeak channel ID this reading was fetched from. Preserved for lineage and re-ingestion purposes."
+    },
+    "ingested_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp of when the ingestion process wrote this record to S3. Used for pipeline latency monitoring and late-arrival detection in CloudWatch."
+    }
+  }
+}
