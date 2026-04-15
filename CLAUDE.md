@@ -42,12 +42,12 @@ Project context for future Claude Code sessions. Read this before making any cha
 | S3 Prefix | `raw` |
 | Kinesis Stream | `pmt-sensor-stream` |
 | Resource prefix | `pmt-` |
-| Databricks Catalog | `main` |
+| Databricks Catalog | `workspace` |
 | Databricks Schema | `predictive_maintenance` |
-| Bronze table | `main.predictive_maintenance.bronze_sensors` |
-| Silver table | `main.predictive_maintenance.silver_sensors` |
-| Gold hourly table | `main.predictive_maintenance.gold_sensors_hourly` |
-| Gold daily table | `main.predictive_maintenance.gold_sensors_daily` |
+| Bronze table | `workspace.predictive_maintenance.bronze_sensors` |
+| Silver table | `workspace.predictive_maintenance.silver_sensors` |
+| Gold hourly table | `workspace.predictive_maintenance.gold_sensors_hourly` |
+| Gold daily table | `workspace.predictive_maintenance.gold_sensors_daily` |
 | CloudWatch Namespace | `PredictiveMaintenance` |
 | Dedup key | `device_id + entry_id` |
 | Null sentinel | `-1.0` (missing sensor reads) |

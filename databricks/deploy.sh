@@ -96,11 +96,15 @@ fi
 info "Databricks CLI found: $(databricks --version 2>/dev/null || echo 'version unknown')"
 
 # Check Python
+PYTHON_CMD="python3"
 if ! command -v python3 &> /dev/null; then
-    error "python3 not found"
-    exit 1
+    if ! command -v python &> /dev/null; then
+        error "python / python3 not found"
+        exit 1
+    fi
+    PYTHON_CMD="python"
 fi
-info "Python: $(python3 --version)"
+info "Python: $($PYTHON_CMD --version)"
 
 info "Environment: ${ENV}"
 info "Dry-run: ${DRY_RUN}"
@@ -112,10 +116,10 @@ DRY_FLAG=""
 [[ "$DRY_RUN" == "true" ]] && DRY_FLAG="--dry-run"
 
 if [[ "$DRY_RUN" == "true" ]]; then
-    warn "[DRY-RUN] Would run: python3 databricks/unity_catalog_setup.py --dry-run"
+    warn "[DRY-RUN] Would run: $PYTHON_CMD databricks/unity_catalog_setup.py --dry-run"
 else
     info "Running Unity Catalog setup..."
-    python3 "${PROJECT_ROOT}/databricks/unity_catalog_setup.py" \
+    $PYTHON_CMD "${PROJECT_ROOT}/databricks/unity_catalog_setup.py" \
         --workspace-url "${DATABRICKS_HOST}" \
         ${DRY_FLAG} \
         && info "Unity Catalog setup complete" \

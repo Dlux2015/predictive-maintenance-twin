@@ -44,7 +44,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DEFAULT_CATALOG = "main"
+DEFAULT_CATALOG = "workspace"
 DEFAULT_SCHEMA = "predictive_maintenance"
 DEFAULT_BUCKET = os.environ.get("PMT_S3_BUCKET", "predictive-maintenance-twin-raw")
 DEFAULT_CREDENTIAL = "pmt-storage-credential"
@@ -180,13 +180,23 @@ class UnityCatalogSetup:
             return
 
         try:
+            self._client.catalogs.get(catalog_name)
+            logger.info("Catalog '%s' already exists — skipping", catalog_name)
+            return
+        except Exception:
+            pass  # catalog not found or permissions issue — attempt creation
+
+        try:
             self._client.catalogs.create(name=catalog_name, comment="Predictive maintenance digital twin")
             logger.info("Created catalog: %s", catalog_name)
-        except AlreadyExists:
-            logger.info("Catalog '%s' already exists — skipping", catalog_name)
         except Exception as exc:
-            logger.error("Failed to create catalog '%s': %s", catalog_name, exc)
-            raise
+            # On free-tier workspaces the 'main' catalog exists but cannot be re-created
+            # without a managed storage location. Log a warning and continue — if the
+            # schema creation succeeds, the catalog is accessible.
+            logger.warning(
+                "Could not create catalog '%s' (it may already exist in the UI): %s",
+                catalog_name, exc,
+            )
 
     def create_schema(
         self,
@@ -270,6 +280,8 @@ class UnityCatalogSetup:
         self,
         iam_role_arn: str = "",
         principal: str = "",
+        catalog: str = DEFAULT_CATALOG,
+        schema: str = DEFAULT_SCHEMA,
         dry_run: bool = False,
     ) -> None:
         """
@@ -288,14 +300,21 @@ class UnityCatalogSetup:
             IAM role ARN for S3 access (optional — skip credential if not provided).
         principal:
             Principal to grant permissions to (optional).
+        catalog:
+            Catalog name to create/use.
+        schema:
+            Schema name to create inside the catalog.
         dry_run:
             If True, log actions without executing.
         """
         logger.info("Starting Unity Catalog setup (dry_run=%s)", dry_run)
         self.create_storage_credential(iam_role_arn=iam_role_arn, dry_run=dry_run)
-        self.create_external_location(dry_run=dry_run)
-        self.create_catalog(dry_run=dry_run)
-        self.create_schema(dry_run=dry_run)
+        if iam_role_arn:
+            self.create_external_location(dry_run=dry_run)
+        else:
+            logger.warning("No IAM role ARN provided — skipping external location creation")
+        self.create_catalog(catalog_name=catalog, dry_run=dry_run)
+        self.create_schema(catalog=catalog, schema=schema, dry_run=dry_run)
         if principal:
             self.grant_permissions(principal=principal, dry_run=dry_run)
         logger.info("Unity Catalog setup complete")
@@ -308,6 +327,10 @@ def main() -> None:
     parser.add_argument("--workspace-url", default=os.environ.get("DATABRICKS_HOST", ""))
     parser.add_argument("--iam-role-arn", default=os.environ.get("AWS_IAM_ROLE_ARN", ""))
     parser.add_argument("--credential-name", default=DEFAULT_CREDENTIAL)
+    parser.add_argument("--catalog", default=os.environ.get("DATABRICKS_CATALOG", DEFAULT_CATALOG),
+                        help="Unity Catalog catalog name (default: workspace)")
+    parser.add_argument("--schema", default=os.environ.get("DATABRICKS_SCHEMA", DEFAULT_SCHEMA),
+                        help="Unity Catalog schema name (default: predictive_maintenance)")
     parser.add_argument("--principal", default=os.environ.get("DATABRICKS_PRINCIPAL", ""),
                         help="User/group/SP to grant permissions to")
     args = parser.parse_args()
@@ -321,6 +344,8 @@ def main() -> None:
     setup.setup_all(
         iam_role_arn=args.iam_role_arn,
         principal=args.principal,
+        catalog=args.catalog,
+        schema=args.schema,
         dry_run=args.dry_run,
     )
 
