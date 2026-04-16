@@ -56,7 +56,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DEFAULT_CATALOG = os.environ.get("DATABRICKS_CATALOG", "main")
+DEFAULT_CATALOG = os.environ.get("DATABRICKS_CATALOG", "workspace")
 DEFAULT_SCHEMA = os.environ.get("DATABRICKS_SCHEMA", "predictive_maintenance")
 DEFAULT_TABLE = f"{DEFAULT_CATALOG}.{DEFAULT_SCHEMA}.bronze_sensors"
 

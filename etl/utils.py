@@ -30,7 +30,7 @@ DEFAULT_REGION = "us-east-1"
 
 def get_spark_session(
     app_name: str = "pmt-etl",
-    catalog: str = "main",
+    catalog: str = "workspace",
     enable_delta_extensions: bool = True,
 ) -> SparkSession:
     """
