@@ -410,3 +410,46 @@ Import `observability/cloudwatch_dashboard.json` into the CloudWatch console for
 | `KINESIS_STREAM` | `pmt-sensor-stream` | Kinesis stream name |
 | `AWS_IAM_ROLE_ARN` | — | IAM role ARN for Databricks → S3 access |
 | `ALERT_EMAIL` | — | Email address for SNS alarm notifications |
+
+---
+
+## Design Decisions
+
+### Why Medallion Architecture?
+Each layer has a clear contract. Bronze is the immutable source of truth — you can always reprocess from scratch. Silver handles all cleaning in one place. Gold is optimized purely for query performance with pre-aggregated KPIs.
+
+### Why MERGE upsert in Silver?
+ThingSpeak can deliver duplicate records on re-poll. The MERGE on `(device_id, entry_id)` means duplicates never accumulate regardless of how many times the pipeline reruns — idempotent by design.
+
+### Why z-score instead of a fixed threshold?
+A fixed threshold like "vibration > 10" breaks across devices running at different baselines. The rolling 24-hour z-score is relative to each device's own recent history, so it works across all devices without per-device tuning.
+
+### Why Auto Loader?
+Checkpoint-based incremental ingestion processes only new files and never re-scans the full dataset, giving exactly-once delivery guarantees. Works with both UC Volumes (primary) and S3 (secondary) without code changes.
+
+### Why Delta Lake?
+ACID transactions, time travel for debugging bad runs, schema enforcement at write time, and OPTIMIZE + ZORDER for fast dashboard queries against the Gold tables.
+
+---
+
+## Key Numbers
+
+| Metric | Value |
+|---|---|
+| Delta tables | 4 (bronze, silver, gold hourly, gold daily) |
+| Pipeline end-to-end duration | ~4 minutes |
+| Pipeline tasks | 3 (bronze_ingest → silver_transform → gold_aggregate) |
+| Risk threshold | vibration z-score > 2.5 |
+| Rolling window | 24 hours per device |
+| VACUUM retention | 168 hours (7 days) |
+| Test suite | 31 tests across ETL, data quality, and ingestion |
+
+---
+
+## Future Improvements
+
+- **ML model** — train a classifier on labeled failure events; the `is_at_risk` z-score flag is the label and a strong baseline feature
+- **Streaming ingestion** — add Kinesis for sub-minute latency alongside the current Auto Loader batch path
+- **Alerting** — wire `is_at_risk = true` to a notification (PagerDuty, Slack, SNS) to page an on-call engineer automatically
+- **More sensors** — replace ThingSpeak public channels with a private MQTT broker or real manufacturing equipment
+- **Data quality monitoring** — enable Databricks Data Quality on the Silver and Gold tables for automated anomaly detection on the pipeline itself
