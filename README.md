@@ -9,6 +9,37 @@
 
 ---
 
+## Screenshots
+
+### Live Dashboard — Databricks SQL
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Pipeline DAG — Bronze → Silver → Gold (all succeeded)
+![Pipeline DAG](docs/screenshots/pipeline-dag.png)
+
+### Pipeline Timeline — Task durations
+![Pipeline Timeline](docs/screenshots/pipeline-timeline.png)
+
+### Pipeline Runs — Job history
+![Pipeline Runs](docs/screenshots/pipeline-runs.png)
+
+### Unity Catalog — silver_sensors sample data
+![Silver Sample Data](docs/screenshots/silver-sample-data.png)
+
+### Unity Catalog — silver_sensors schema
+![Silver Schema](docs/screenshots/silver-schema.png)
+
+### Unity Catalog — bronze_sensors schema
+![Bronze Schema](docs/screenshots/bronze-schema.png)
+
+### Unity Catalog — gold_sensors_hourly schema
+![Gold Hourly Schema](docs/screenshots/gold-hourly-schema.png)
+
+### Unity Catalog — gold_sensors_daily schema (with is_at_risk + vibration_zscore)
+![Gold Daily Schema](docs/screenshots/gold-daily-schema.png)
+
+---
+
 ## What This Project Does
 
 Manufacturing equipment (motors, pumps, compressors) emits continuous sensor signals — vibration, temperature, pressure. When those signals drift outside their normal range, failure is coming. The problem is that most factories either ignore the data or look at it too late.
