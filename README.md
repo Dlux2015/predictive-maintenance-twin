@@ -31,14 +31,15 @@ The result: maintenance teams get notified about the right equipment at the righ
 |---|---|---|
 | IoT Data Source | ThingSpeak Public API | Real sensor data, no infrastructure required |
 | Ingestion | Python + tenacity | Resilient polling with exponential backoff |
-| Streaming | AWS Kinesis Data Streams + Firehose | Real-time path alongside batch S3 landing |
-| Raw Storage | AWS S3 (partitioned by date/hour) | Durable, queryable, cost-efficient landing zone |
+| Raw Storage | UC Volumes (partitioned by date/hour) | Databricks-native landing zone, no AWS needed |
 | ETL Engine | PySpark 3.5 on Databricks | Distributed processing at any scale |
 | Table Format | Delta Lake 3.2 | ACID transactions, time travel, schema enforcement |
 | Data Catalog | Unity Catalog (Databricks) | Governance, access control, lineage |
 | Orchestration | Databricks Jobs API v2.1 | Hourly scheduled pipeline with dependency DAG |
-| Observability | AWS CloudWatch | Pipeline health metrics, alarms, SNS alerting |
+| Dashboard | Databricks SQL | Live 5-widget pipeline + device health dashboard |
 | Runtime | Databricks Runtime 14.3 LTS (Photon) | Production-grade, Photon-accelerated compute |
+| Streaming *(optional)* | AWS Kinesis Data Streams + Firehose | Real-time path alongside batch landing |
+| Observability *(optional)* | AWS CloudWatch | Pipeline health metrics, alarms, SNS alerting |
 
 ---
 
@@ -47,17 +48,17 @@ The result: maintenance teams get notified about the right equipment at the righ
 | Capability | Implementation |
 |---|---|
 | **Medallion Architecture** | Bronze (raw) → Silver (clean) → Gold (KPIs) with clear layer contracts |
-| **Streaming + Batch** | Kinesis real-time path runs in parallel with Auto Loader batch ingestion |
 | **Incremental ingestion** | Databricks Auto Loader with checkpoint-based exactly-once delivery |
 | **Data quality** | `DataQualityChecker` runs null rate, row count, and range checks at every layer |
 | **Deduplication** | MERGE upsert on `(device_id, entry_id)` — duplicates never accumulate |
 | **Predictive signal** | Rolling 24h vibration z-score; `is_at_risk` flag when z > 2.5 |
-| **Governance** | Unity Catalog external location, storage credentials, schema-level grants |
-| **Resilience** | Exponential backoff (tenacity) on all AWS SDK and HTTP calls |
+| **Governance** | Unity Catalog Volumes, managed Delta tables, schema-level grants |
+| **Resilience** | Exponential backoff (tenacity) on all SDK and HTTP calls |
 | **Idempotent infra** | All setup scripts are safe to re-run; check-before-create everywhere |
-| **Observability** | 12-widget CloudWatch dashboard + 5 pipeline alarms with SNS email |
+| **Observability** | Databricks SQL 5-widget dashboard; optional CloudWatch metrics + alarms |
 | **Tested** | pytest suite covering ETL transforms, data quality checks, ingestion logic |
 | **CI/CD** | GitHub Actions runs tests and linting on every push |
+| **Streaming *(optional)*** | Kinesis real-time path runs in parallel with Auto Loader batch ingestion |
 
 ---
 
@@ -77,21 +78,23 @@ The result: maintenance teams get notified about the right equipment at the righ
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                      INGESTION LAYER (Python)                            │
 │                                                                          │
-│  api_producer.py                                                         │
+│  api_producer.py  [PMT_BACKEND=databricks]                               │
 │  ├── ThingSpeakPoller   — fetches latest feed, maps fields               │
-│  ├── S3Writer           — writes JSON to partitioned S3 key              │
-│  ├── KinesisProducer    — puts record to Kinesis stream                  │
-│  └── CloudWatchReporter — publishes RecordsIngested metric               │
+│  ├── DBFSWriter         — writes JSON to UC Volume via Files API  ◄ primary
+│  ├── S3Writer           — writes JSON to partitioned S3 key       ◄ optional
+│  ├── KinesisProducer    — puts record to Kinesis stream            ◄ optional
+│  └── CloudWatchReporter — publishes RecordsIngested metric         ◄ optional
 │                                                                          │
 │  Retry: tenacity exponential backoff (max 5 attempts, cap 32s)           │
-│  S3 key: raw/year=YYYY/month=MM/day=DD/hour=HH/<uuid>.json               │
+│  Volume path: /Volumes/workspace/predictive_maintenance/raw/             │
+│               year=YYYY/month=MM/day=DD/hour=HH/<uuid>.json              │
 └──────────┬─────────────────────────────────┬─────────────────────────────┘
-           │ PutObject                        │ PutRecord
+           │ Files API (UC Volumes)           │ PutRecord [optional]
            ▼                                  ▼
 ┌──────────────────────────┐    ┌─────────────────────────────────────────┐
-│   AWS S3 (raw landing)   │    │   Kinesis Data Stream                   │
-│   raw/year=/month=/...   │    │   pmt-sensor-stream                     │
-│                          │    │         │ Firehose delivery              │
+│  UC Volume (raw landing) │    │   AWS Kinesis Data Stream [optional]    │
+│  workspace.predictive_   │    │   pmt-sensor-stream                     │
+│  maintenance.raw         │    │         │ Firehose delivery              │
 │                          │    │         └──→ s3://bucket/firehose/       │
 └──────────┬───────────────┘    └─────────────────────────────────────────┘
            │ Auto Loader (cloudFiles)
@@ -125,23 +128,22 @@ The result: maintenance teams get notified about the right equipment at the righ
 │  Unity Catalog: workspace.predictive_maintenance.*                       │
 └──────────────┬────────────────┴──────────────────────────────────────────┘
                │
-    ┌──────────┴──────────┐
-    ▼                      ▼
+    ┌──────────┴────────────────┐
+    ▼                            ▼
 ┌────────────────┐   ┌──────────────────────────────────────────────────────┐
-│ Databricks SQL │   │   CloudWatch Monitoring                               │
+│ Databricks SQL │   │   CloudWatch Monitoring  [optional — aws backend]    │
 │ Dashboard      │   │                                                        │
 │                │   │   Alarms:                                              │
 │ • Twin state   │   │   • pmt-ingestion-stale (no records > 5 min)          │
 │ • At-risk      │   │   • pmt-pipeline-errors (any error)                   │
-│   devices      │   │   • pmt-kinesis-lag (iterator age > 60s)              │
-│ • 24h vibr.    │   │   • pmt-s3-errors (5xx on raw bucket)                │
-│   trend        │   │   • pmt-gold-stale (Gold not updated > 2h)            │
-│ • Pipeline     │   │                                                        │
-│   health       │   │   Custom Metrics (namespace: PredictiveMaintenance):  │
-│ • Daily KPI    │   │   • RecordsIngested, BronzeRowCount, SilverRowCount   │
-│   summary      │   │   • AtRiskDeviceCount, MaxVibrationZScore             │
-└────────────────┘   │   SNS → pmt-pipeline-alerts → email                  │
-                     └──────────────────────────────────────────────────────┘
+│   devices      │   │   • pmt-gold-stale (Gold not updated > 2h)            │
+│ • 24h vibr.    │   │                                                        │
+│   trend        │   │   Custom Metrics (namespace: PredictiveMaintenance):  │
+│ • Pipeline     │   │   • BronzeRowCount, SilverRowCount, GoldRowCount      │
+│   health       │   │   • AtRiskDeviceCount, MaxVibrationZScore             │
+│ • Daily KPI    │   │   SNS → pmt-pipeline-alerts → email                  │
+│   summary      │   │                                                        │
+└────────────────┘   └──────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -160,7 +162,7 @@ Raw JSON as received from IoT devices. **Append-only** — the immutable source 
 | `temperature_celsius` | DOUBLE | Temperature reading (°C) |
 | `pressure_bar` | DOUBLE | Pressure reading (bar) |
 | `_ingested_at` | TIMESTAMP | When this record hit the pipeline |
-| `_source_file` | STRING | S3 source file path |
+| `_source_file` | STRING | Source file path (UC Volume or S3) |
 
 ### Silver — `silver_sensors`
 Clean, typed, deduplicated. Ready for analytics and feature engineering.
@@ -222,15 +224,15 @@ predictive-maintenance-twin/
 
 ## Quick Start
 
+The primary path runs entirely on Databricks — no AWS account required.
+
 ### Prerequisites
 
-| Requirement | Version |
+| Requirement | Notes |
 |---|---|
-| Python | 3.9+ (3.11 recommended) |
-| AWS Account | IAM permissions for S3, Kinesis, CloudWatch, IAM |
-| Databricks Workspace | Unity Catalog enabled |
-| Databricks CLI | 0.18+ |
-| AWS CLI | 2.x |
+| Python 3.9+ | 3.11 recommended |
+| Databricks Workspace | Free trial or existing workspace with Unity Catalog enabled |
+| Databricks CLI | 0.18+ (`pip install databricks-cli`) |
 
 ### 1. Clone and install
 
@@ -243,39 +245,45 @@ pip install -r requirements.txt
 ### 2. Configure environment variables
 
 ```bash
-export AWS_REGION="us-east-1"
-export PMT_S3_BUCKET="predictive-maintenance-twin-raw"
-export KINESIS_STREAM="pmt-sensor-stream"
 export DATABRICKS_HOST="https://dbc-xxxxxxxx.cloud.databricks.com"
 export DATABRICKS_TOKEN="dapi..."
-export ALERT_EMAIL="you@example.com"
-export AWS_IAM_ROLE_ARN="arn:aws:iam::123456789012:role/pmt-databricks-role"
+# Optional overrides (defaults shown)
+export DATABRICKS_CATALOG="workspace"
+export DATABRICKS_SCHEMA="predictive_maintenance"
 ```
 
-### 3. Provision AWS infrastructure
+### 3. Set up Unity Catalog schema
 
 ```bash
-python infra/s3_setup.py --dry-run && python infra/s3_setup.py
-python infra/iam_setup.py --dry-run && python infra/iam_setup.py
-python infra/kinesis_setup.py --dry-run && python infra/kinesis_setup.py
-python infra/cloudwatch_alarms.py --dry-run && python infra/cloudwatch_alarms.py
+# Preview changes first
+python databricks/unity_catalog_setup.py --dry-run
+
+# Apply (creates catalog, schema — idempotent)
+python databricks/unity_catalog_setup.py
 ```
 
-### 4. Deploy Databricks Unity Catalog and workflow
+### 4. Deploy the Databricks workflow
 
 ```bash
-python databricks/unity_catalog_setup.py --iam-role-arn $AWS_IAM_ROLE_ARN
+# Creates the 3-task Bronze → Silver → Gold job and triggers a first run
 ./databricks/deploy.sh --env prod
 ```
 
-### 5. Start ingestion
+The script connects the Databricks Repo to this GitHub repository, creates the
+`workspace.predictive_maintenance` schema if needed, deploys the job, and
+triggers an initial run. Monitor progress in the Databricks Jobs UI.
+
+### 5. Push sensor data (ingestion)
 
 ```bash
-# Single poll, no AWS writes — verify connectivity
-python ingestion/api_producer.py --once --dry-run
+# Single poll, dry-run — verify ThingSpeak connectivity
+python ingestion/api_producer.py --once --dry-run --backend databricks
+
+# Single poll, write one JSON file to the UC Volume
+python ingestion/api_producer.py --once --backend databricks
 
 # Continuous production polling (every 60s)
-python ingestion/api_producer.py
+python ingestion/api_producer.py --backend databricks
 ```
 
 ### 6. Run tests
@@ -286,42 +294,88 @@ pytest tests/test_ingestion.py       # pure-Python tests only, no Spark needed
 pytest --cov=etl --cov=ingestion tests/
 ```
 
+### Optional: AWS backend
+
+To use S3 + Kinesis as the ingestion path instead of UC Volumes, set:
+
+```bash
+export PMT_BACKEND="aws"
+export PMT_S3_BUCKET="predictive-maintenance-twin-raw"
+export KINESIS_STREAM="pmt-sensor-stream"
+export AWS_REGION="us-east-1"
+export AWS_IAM_ROLE_ARN="arn:aws:iam::123456789012:role/pmt-databricks-role"
+
+# Provision AWS resources
+python infra/s3_setup.py
+python infra/iam_setup.py
+python infra/kinesis_setup.py
+python infra/cloudwatch_alarms.py
+
+# Then deploy with IAM role for UC external location
+python databricks/unity_catalog_setup.py --iam-role-arn $AWS_IAM_ROLE_ARN
+```
+
 ---
 
 ## Observability
 
-### CloudWatch Alarms
+### Databricks SQL Dashboard (primary)
+
+`databricks/dashboard_query.sql` contains five queries for a live pipeline + device health dashboard:
+
+| Widget | Query | Purpose |
+|---|---|---|
+| Current Twin State | Query 1 | Latest reading per device with data freshness |
+| At-Risk Devices | Query 2 | Devices with `vibration_zscore > 2.5` in the last 7 days |
+| 24h Vibration Trend | Query 3 | Hourly vibration line chart per device |
+| Pipeline Health | Query 4 | Row counts + data lag across Bronze / Silver / Gold |
+| Daily KPI Summary | Query 5 | 30-day aggregation table with `is_at_risk` flag |
+
+**To create the dashboard in Databricks SQL:**
+1. Open **Databricks SQL → Queries → Create query**
+2. Paste each query from `dashboard_query.sql` as a separate saved query
+3. Open **Dashboards → Create dashboard**, add a widget for each query, and select the appropriate visualisation type (table or line chart as noted in the query comments)
+
+### CloudWatch Monitoring (optional — AWS backend)
+
+When running with `PMT_BACKEND=aws`, the pipeline publishes custom metrics to the
+`PredictiveMaintenance` CloudWatch namespace and creates these alarms:
 
 | Alarm | Triggers When | Action |
 |---|---|---|
 | `pmt-ingestion-stale` | No records ingested in 5 min | SNS email |
 | `pmt-pipeline-errors` | Any pipeline error logged | SNS email |
-| `pmt-kinesis-lag` | Iterator age > 60,000 ms | SNS email |
-| `pmt-s3-errors` | S3 5xx errors on raw bucket | SNS email |
 | `pmt-gold-stale` | Gold table not updated in 2h | SNS email |
 
-### CloudWatch Dashboard
-
-Import `observability/cloudwatch_dashboard.json` into the CloudWatch console (Dashboards → Create dashboard → Source JSON) for a 12-widget live view of pipeline health, ingestion rates, and device risk status.
-
-### Databricks SQL Dashboard
-
-Import `databricks/dashboard_query.sql` into Databricks SQL for five widgets: current device state, at-risk device list, 24h vibration trend, pipeline health, and daily KPI summary.
+Import `observability/cloudwatch_dashboard.json` into the CloudWatch console for a 12-widget live view of pipeline health, ingestion rates, and device risk status.
 
 ---
 
 ## Environment Variables Reference
 
+### Required (Databricks primary backend)
+
+| Variable | Description |
+|---|---|
+| `DATABRICKS_HOST` | Databricks workspace URL (e.g. `https://dbc-xxx.cloud.databricks.com`) |
+| `DATABRICKS_TOKEN` | Databricks PAT or OAuth token |
+
+### Optional / overrides
+
+| Variable | Default | Description |
+|---|---|---|
+| `PMT_BACKEND` | `databricks` | `databricks` (UC Volumes) or `aws` (S3 + Kinesis) |
+| `DATABRICKS_CATALOG` | `workspace` | Unity Catalog catalog name |
+| `DATABRICKS_SCHEMA` | `predictive_maintenance` | Unity Catalog schema name |
+| `DBFS_RAW_PATH` | `/Volumes/workspace/predictive_maintenance/raw` | UC Volume path for raw JSON |
+| `LOG_LEVEL` | `INFO` | Python logging verbosity |
+
+### AWS backend only (`PMT_BACKEND=aws`)
+
 | Variable | Default | Description |
 |---|---|---|
 | `AWS_REGION` | `us-east-1` | AWS region for all services |
 | `PMT_S3_BUCKET` | `predictive-maintenance-twin-raw` | Raw landing zone S3 bucket |
-| `KINESIS_STREAM` | `pmt-sensor-stream` | Kinesis stream name (empty string = disable) |
-| `DATABRICKS_HOST` | — | Databricks workspace URL |
-| `DATABRICKS_TOKEN` | — | Databricks PAT or OAuth token |
-| `DATABRICKS_CATALOG` | `workspace` | Unity Catalog catalog name |
-| `DATABRICKS_SCHEMA` | `predictive_maintenance` | Unity Catalog schema name |
+| `KINESIS_STREAM` | `pmt-sensor-stream` | Kinesis stream name |
 | `AWS_IAM_ROLE_ARN` | — | IAM role ARN for Databricks → S3 access |
 | `ALERT_EMAIL` | — | Email address for SNS alarm notifications |
-| `LOG_LEVEL` | `INFO` | Python logging verbosity |
-| `DRY_RUN` | `false` | Set to `true` to skip all AWS writes |

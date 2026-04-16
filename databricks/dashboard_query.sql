@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Predictive Maintenance Digital Twin — Databricks SQL Dashboard Queries
--- Catalog: main | Schema: predictive_maintenance
+-- Catalog: workspace | Schema: predictive_maintenance
 --
 -- These queries power the 5-widget Databricks SQL Dashboard.
 -- Each query section is separated by a header and a semicolon.
@@ -36,7 +36,7 @@ FROM (
             PARTITION BY device_id
             ORDER BY recorded_at DESC
         ) AS rn
-    FROM main.predictive_maintenance.silver_sensors
+    FROM workspace.predictive_maintenance.silver_sensors
     WHERE device_id IS NOT NULL
 )
 WHERE rn = 1
@@ -62,7 +62,7 @@ SELECT
     ROUND(avg_temperature_celsius, 2) AS avg_temperature_celsius,
     ROUND(avg_pressure_bar, 3)      AS avg_pressure_bar,
     _computed_at
-FROM main.predictive_maintenance.gold_sensors_daily
+FROM workspace.predictive_maintenance.gold_sensors_daily
 WHERE
     is_at_risk = TRUE
     AND date >= DATE_SUB(CURRENT_DATE(), 7)
@@ -93,7 +93,7 @@ SELECT
     END                             AS threshold_exceeded,
     ROUND(avg_temperature_celsius, 2) AS avg_temperature_celsius,
     ROUND(avg_pressure_bar, 3)      AS avg_pressure_bar
-FROM main.predictive_maintenance.gold_sensors_hourly
+FROM workspace.predictive_maintenance.gold_sensors_hourly
 WHERE
     window_start >= TIMESTAMPADD(HOUR, -24, CURRENT_TIMESTAMP())
     AND device_id IS NOT NULL
@@ -120,7 +120,7 @@ SELECT
         MAX(recorded_at),
         CURRENT_TIMESTAMP()
     )                          AS data_lag_minutes
-FROM main.predictive_maintenance.bronze_sensors
+FROM workspace.predictive_maintenance.bronze_sensors
 
 UNION ALL
 
@@ -134,7 +134,7 @@ SELECT
         MAX(recorded_at),
         CURRENT_TIMESTAMP()
     )                          AS data_lag_minutes
-FROM main.predictive_maintenance.silver_sensors
+FROM workspace.predictive_maintenance.silver_sensors
 
 UNION ALL
 
@@ -148,7 +148,7 @@ SELECT
         MAX(window_start),
         CURRENT_TIMESTAMP()
     )                          AS data_lag_minutes
-FROM main.predictive_maintenance.gold_sensors_hourly
+FROM workspace.predictive_maintenance.gold_sensors_hourly
 
 UNION ALL
 
@@ -162,7 +162,7 @@ SELECT
         MAX(CAST(date AS TIMESTAMP)),
         CURRENT_TIMESTAMP()
     )                          AS data_lag_minutes
-FROM main.predictive_maintenance.gold_sensors_daily
+FROM workspace.predictive_maintenance.gold_sensors_daily
 
 ORDER BY
     CASE layer
@@ -204,7 +204,7 @@ SELECT
     ROUND(max_pressure_bar, 3)    AS max_pressure_bar,
 
     _computed_at
-FROM main.predictive_maintenance.gold_sensors_daily
+FROM workspace.predictive_maintenance.gold_sensors_daily
 WHERE
     date >= DATE_SUB(CURRENT_DATE(), 30)
 ORDER BY
