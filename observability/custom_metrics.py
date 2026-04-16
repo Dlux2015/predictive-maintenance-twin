@@ -29,9 +29,8 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import time
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
@@ -88,8 +87,8 @@ class MetricPublisher:
         metric_name: str,
         value: float,
         unit: str = "Count",
-        dimensions: Optional[list[dict]] = None,
-        timestamp: Optional[datetime] = None,
+        dimensions: list[dict] | None = None,
+        timestamp: datetime | None = None,
     ) -> None:
         """
         Publish a single metric to CloudWatch.
@@ -114,7 +113,7 @@ class MetricPublisher:
                     "Value": value,
                     "Unit": unit,
                     "Dimensions": dimensions or [],
-                    "Timestamp": timestamp or datetime.now(timezone.utc),
+                    "Timestamp": timestamp or datetime.now(UTC),
                 }
             ]
         )
@@ -178,7 +177,7 @@ class MetricPublisher:
             "GoldDailyRowCount": f"SELECT COUNT(*) FROM {DEFAULT_CATALOG}.{DEFAULT_SCHEMA}.gold_sensors_daily",
         }
         metrics = []
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         for metric_name, query in queries.items():
             try:

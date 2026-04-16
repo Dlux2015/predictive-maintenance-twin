@@ -20,11 +20,10 @@ from __future__ import annotations
 import json
 import logging
 import os
-import time
 import uuid
 from collections import deque
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +87,7 @@ class KinesisStub:
             "ShardId": _FAKE_SHARD_ID,
             "PartitionKey": PartitionKey,
             "Data": Data.decode("utf-8", errors="replace"),
-            "ApproximateArrivalTimestamp": datetime.now(timezone.utc).isoformat(),
+            "ApproximateArrivalTimestamp": datetime.now(UTC).isoformat(),
             "StreamName": StreamName,
         }
         self._records.append(entry)

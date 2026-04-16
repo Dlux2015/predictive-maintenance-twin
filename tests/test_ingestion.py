@@ -24,13 +24,12 @@ import pytest
 from ingestion.api_producer import (
     ChannelConfig,
     DBFSWriter,
+    S3Writer,
     SensorReading,
     ThingSpeakPoller,
-    S3Writer,
     build_channels,
     load_config,
 )
-
 
 # ---------------------------------------------------------------------------
 # SensorReading

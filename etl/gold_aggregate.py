@@ -33,7 +33,6 @@ from etl.utils import (
     get_spark_session,
     get_table_row_count,
     publish_pipeline_metric,
-    write_delta_table,
 )
 
 logging.basicConfig(
@@ -365,7 +364,6 @@ class GoldAggregator:
             publish_pipeline_metric("AtRiskDeviceCount", float(at_risk), "Count")
 
             # Max z-score across all devices today
-            from pyspark.sql import functions as F2
 
             max_zscore = (
                 self.spark.table(GOLD_DAILY_TABLE)

@@ -33,15 +33,13 @@ DRY_RUN             Set to 'true' to skip all writes (default: false)
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import logging
 import os
 import sys
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import boto3
 import requests
@@ -86,9 +84,9 @@ class SensorReading:
     device_id: str
     entry_id: int
     recorded_at: str  # ISO-8601 UTC
-    vibration_rms: Optional[float]
-    temperature_celsius: Optional[float]
-    pressure_bar: Optional[float]
+    vibration_rms: float | None
+    temperature_celsius: float | None
+    pressure_bar: float | None
     source_channel: int
     ingested_at: str  # ISO-8601 UTC, set at write time
 
@@ -133,7 +131,7 @@ class ThingSpeakPoller:
         wait=wait_exponential(multiplier=1, min=1, max=32),
         reraise=True,
     )
-    def fetch_reading(self, channel: ChannelConfig) -> Optional[SensorReading]:
+    def fetch_reading(self, channel: ChannelConfig) -> SensorReading | None:
         """
         Fetch the latest reading from a ThingSpeak channel.
 
@@ -171,7 +169,7 @@ class ThingSpeakPoller:
 
     def _parse_response(
         self, data: dict, channel: ChannelConfig
-    ) -> Optional[SensorReading]:
+    ) -> SensorReading | None:
         """
         Parse a raw ThingSpeak API response into a SensorReading.
 
@@ -196,7 +194,7 @@ class ThingSpeakPoller:
 
         feed = feeds[0]
 
-        def _safe_float(val: Optional[str]) -> Optional[float]:
+        def _safe_float(val: str | None) -> float | None:
             """Parse a string to float, returning None on failure."""
             if val is None or str(val).strip() == "":
                 return None
@@ -213,7 +211,7 @@ class ThingSpeakPoller:
             temperature_celsius=_safe_float(feed.get("field2")),
             pressure_bar=_safe_float(feed.get("field3")),
             source_channel=channel.channel_id,
-            ingested_at=datetime.now(timezone.utc).isoformat(),
+            ingested_at=datetime.now(UTC).isoformat(),
         )
 
 
@@ -249,7 +247,7 @@ class S3Writer:
         Partition scheme:
         ``<prefix>/year=YYYY/month=MM/day=DD/hour=HH/<uuid>.json``
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return (
             f"{self.prefix}/"
             f"year={now.year:04d}/"
@@ -433,7 +431,7 @@ class DBFSWriter:
         interchangeable between backends:
         ``<volume_path>/year=YYYY/month=MM/day=DD/hour=HH/<uuid>.json``
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return (
             f"{self.volume_path}/"
             f"year={now.year:04d}/"
@@ -530,7 +528,7 @@ class CloudWatchReporter:
                         "Dimensions": [{"Name": "DeviceId", "Value": device_id}],
                         "Value": float(count),
                         "Unit": "Count",
-                        "Timestamp": datetime.now(timezone.utc),
+                        "Timestamp": datetime.now(UTC),
                     }
                 ],
             )
@@ -562,7 +560,7 @@ def load_config(config_path: str) -> dict:
     Parsed config dictionary.
     """
     try:
-        with open(config_path, "r", encoding="utf-8") as fh:
+        with open(config_path, encoding="utf-8") as fh:
             return yaml.safe_load(fh) or {}
     except FileNotFoundError:
         logger.warning("Config file not found at %s — using defaults", config_path)

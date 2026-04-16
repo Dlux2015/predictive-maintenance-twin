@@ -25,14 +25,13 @@ import os
 from delta.tables import DeltaTable
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.types import DoubleType, LongType, TimestampType
+from pyspark.sql.types import DoubleType, LongType
 from pyspark.sql.window import Window
 
 from etl.utils import (
     DataQualityChecker,
     get_spark_session,
     get_table_row_count,
-    log_table_stats,
     publish_pipeline_metric,
 )
 

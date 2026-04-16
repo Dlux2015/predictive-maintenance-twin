@@ -11,9 +11,7 @@ This module provides:
 from __future__ import annotations
 
 import logging
-import os
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from pyspark.sql import DataFrame, SparkSession
 
@@ -109,7 +107,7 @@ class DataQualityChecker:
         self._df = df
         self.table_name = table_name
         self._results: dict[str, bool] = {}
-        self._total_rows: Optional[int] = None
+        self._total_rows: int | None = None
 
     def _row_count(self) -> int:
         """Cache and return the DataFrame row count."""
@@ -293,7 +291,7 @@ def write_delta_table(
     df: DataFrame,
     full_table_name: str,
     mode: str = "append",
-    partition_cols: Optional[list[str]] = None,
+    partition_cols: list[str] | None = None,
 ) -> None:
     """
     Write a DataFrame to a Delta table.
@@ -347,7 +345,7 @@ def publish_pipeline_metric(
     metric_name: str,
     value: float,
     unit: str = "Count",
-    dimensions: Optional[dict] = None,
+    dimensions: dict | None = None,
     region: str = DEFAULT_REGION,
 ) -> None:
     """
@@ -382,7 +380,7 @@ def publish_pipeline_metric(
         "MetricName": metric_name,
         "Value": value,
         "Unit": unit,
-        "Timestamp": datetime.now(timezone.utc),
+        "Timestamp": datetime.now(UTC),
     }
     if dimensions:
         metric_data["Dimensions"] = [

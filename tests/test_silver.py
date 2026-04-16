@@ -8,7 +8,7 @@ parse_timestamps, handle_nulls, deduplicate, validate). The I/O methods
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -23,7 +23,6 @@ from pyspark.sql.types import (
 )
 
 from etl.silver_transform import NULL_SENTINEL, SilverTransformer
-
 
 # ---------------------------------------------------------------------------
 # Shared schema & helper
@@ -329,8 +328,8 @@ class TestDeduplicate:
 
     def test_unique_rows_unchanged(self, spark):
         schema = self._dedup_schema()
-        ts1 = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        ts2 = datetime(2024, 1, 1, 0, 1, 0, tzinfo=timezone.utc)
+        ts1 = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+        ts2 = datetime(2024, 1, 1, 0, 1, 0, tzinfo=UTC)
         rows = [
             Row(
                 device_id="d1",
@@ -357,8 +356,8 @@ class TestDeduplicate:
 
     def test_duplicate_device_entry_keeps_latest_ingested_at(self, spark):
         schema = self._dedup_schema()
-        older = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        newer = datetime(2024, 1, 1, 0, 5, 0, tzinfo=timezone.utc)
+        older = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+        newer = datetime(2024, 1, 1, 0, 5, 0, tzinfo=UTC)
         rows = [
             Row(
                 device_id="d1",
@@ -388,8 +387,8 @@ class TestDeduplicate:
 
     def test_dedup_across_multiple_devices(self, spark):
         schema = self._dedup_schema()
-        ts = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        ts_new = datetime(2024, 1, 1, 1, 0, 0, tzinfo=timezone.utc)
+        ts = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
+        ts_new = datetime(2024, 1, 1, 1, 0, 0, tzinfo=UTC)
         rows = [
             # device d1: entry 1 duplicated
             Row(

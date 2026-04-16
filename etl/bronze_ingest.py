@@ -34,7 +34,6 @@ import argparse
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -45,13 +44,11 @@ from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
-    TimestampType,
 )
 
 from etl.utils import (
     DataQualityChecker,
     get_spark_session,
-    log_table_stats,
     publish_pipeline_metric,
 )
 

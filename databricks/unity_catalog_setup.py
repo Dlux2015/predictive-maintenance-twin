@@ -29,13 +29,9 @@ import logging
 import os
 
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.errors import AlreadyExists, BadRequest, NotFound
+from databricks.sdk.errors import AlreadyExists, BadRequest
 from databricks.sdk.service.catalog import (
-    CatalogInfo,
-    IsolationMode,
-    SchemaInfo,
     SecurableType,
-    StorageCredentialInfo,
 )
 
 logging.basicConfig(

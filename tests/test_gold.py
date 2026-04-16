@@ -14,7 +14,7 @@ All tests use plain DataFrames — no Delta Lake required.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
 from pyspark.sql import Row, SparkSession
@@ -29,8 +29,7 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
-from etl.gold_aggregate import GoldAggregator, NULL_SENTINEL, RISK_ZSCORE_THRESHOLD
-
+from etl.gold_aggregate import NULL_SENTINEL, RISK_ZSCORE_THRESHOLD, GoldAggregator
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -51,7 +50,7 @@ def _silver_schema() -> StructType:
 
 
 def _ts(year: int, month: int, day: int, hour: int = 0) -> datetime:
-    return datetime(year, month, day, hour, 0, 0, tzinfo=timezone.utc)
+    return datetime(year, month, day, hour, 0, 0, tzinfo=UTC)
 
 
 def _make_aggregator(spark: SparkSession) -> GoldAggregator:
