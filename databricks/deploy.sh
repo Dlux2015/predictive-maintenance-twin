@@ -95,14 +95,18 @@ if ! command -v databricks &> /dev/null; then
 fi
 info "Databricks CLI found: $(databricks --version 2>/dev/null || echo 'version unknown')"
 
-# Check Python
-PYTHON_CMD="python3"
-if ! command -v python3 &> /dev/null; then
-    if ! command -v python &> /dev/null; then
-        error "python / python3 not found"
-        exit 1
+# Check Python — prefer `python` over `python3` because on Windows the
+# `python3` entry in PATH may be a non-functional Microsoft Store alias.
+PYTHON_CMD=""
+for cmd in python python3; do
+    if command -v "$cmd" &> /dev/null && "$cmd" --version &> /dev/null; then
+        PYTHON_CMD="$cmd"
+        break
     fi
-    PYTHON_CMD="python"
+done
+if [[ -z "$PYTHON_CMD" ]]; then
+    error "python / python3 not found or not executable"
+    exit 1
 fi
 info "Python: $($PYTHON_CMD --version)"
 

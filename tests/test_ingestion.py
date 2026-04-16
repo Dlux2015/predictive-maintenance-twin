@@ -4,11 +4,13 @@ Unit tests for ingestion/api_producer.py — pure-Python logic only.
 Covered:
   - SensorReading.to_dict / to_json
   - ThingSpeakPoller._parse_response (field mapping, null handling, empty feeds)
+  - DBFSWriter._build_path (partition scheme, uniqueness)
   - S3Writer._build_key (partition scheme, uniqueness)
   - load_config (YAML parsing, missing file fallback, malformed YAML)
   - build_channels (config channels, default fallback)
 
-No AWS calls are made — boto3 clients are never instantiated in these tests.
+No AWS or Databricks API calls are made — network clients are never
+instantiated in these tests.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ import pytest
 
 from ingestion.api_producer import (
     ChannelConfig,
+    DBFSWriter,
     SensorReading,
     ThingSpeakPoller,
     S3Writer,
@@ -171,6 +174,78 @@ class TestThingSpeakParseResponse:
         reading = poller._parse_response(self._api_response(), self._channel())
         assert reading is not None
         assert reading.ingested_at != ""
+
+
+# ---------------------------------------------------------------------------
+# DBFSWriter._build_path
+# ---------------------------------------------------------------------------
+
+
+class TestDBFSWriter:
+    def _writer(self) -> DBFSWriter:
+        return DBFSWriter(
+            volume_path="/Volumes/workspace/predictive_maintenance/raw",
+            host="https://dbc-test.cloud.databricks.com",
+            token="dapi-test-token",
+        )
+
+    def _reading(self) -> SensorReading:
+        return SensorReading(
+            device_id="device-001",
+            entry_id=1,
+            recorded_at="2024-06-01T12:00:00Z",
+            vibration_rms=3.14,
+            temperature_celsius=22.5,
+            pressure_bar=1.01,
+            source_channel=9,
+            ingested_at="2024-06-01T12:00:01Z",
+        )
+
+    def test_path_starts_with_volume_path(self):
+        writer = self._writer()
+        path = writer._build_path(self._reading())
+        assert path.startswith("/Volumes/workspace/predictive_maintenance/raw/")
+
+    def test_path_has_partitioned_structure(self):
+        writer = self._writer()
+        path = writer._build_path(self._reading())
+        assert "year=" in path
+        assert "month=" in path
+        assert "day=" in path
+        assert "hour=" in path
+
+    def test_path_ends_with_json(self):
+        writer = self._writer()
+        path = writer._build_path(self._reading())
+        assert path.endswith(".json")
+
+    def test_paths_are_unique(self):
+        """Each call must produce a different UUID-based path."""
+        writer = self._writer()
+        reading = self._reading()
+        paths = {writer._build_path(reading) for _ in range(10)}
+        assert len(paths) == 10, "Expected unique paths for each call"
+
+    def test_trailing_slash_stripped_from_volume_path(self):
+        """Constructor should strip trailing slash so paths don't double-slash."""
+        writer = DBFSWriter(
+            volume_path="/Volumes/workspace/predictive_maintenance/raw/",
+            host="https://dbc-test.cloud.databricks.com",
+            token="token",
+        )
+        path = writer._build_path(self._reading())
+        assert "raw//year=" not in path
+        assert path.startswith("/Volumes/workspace/predictive_maintenance/raw/year=")
+
+    def test_dry_run_does_not_make_http_call(self):
+        """write() in dry-run mode must return a path without calling requests."""
+        import unittest.mock as mock
+
+        writer = self._writer()
+        with mock.patch("requests.post") as mock_post:
+            result = writer.write(self._reading(), dry_run=True)
+            mock_post.assert_not_called()
+        assert result.endswith(".json")
 
 
 # ---------------------------------------------------------------------------

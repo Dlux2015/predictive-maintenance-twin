@@ -1,25 +1,39 @@
 """
-ThingSpeak → S3 + Kinesis ingestion producer.
+ThingSpeak ingestion producer — Databricks-primary, AWS-secondary.
 
 Polls ThingSpeak public IoT channels every 60 seconds, transforms readings
-into the canonical SensorReading schema, writes each record to S3 (partitioned
-by date/hour), and optionally puts records to a Kinesis Data Stream.
+into the canonical SensorReading schema, then writes each record to one of
+two backends:
+
+  databricks (default)
+      Writes JSON directly to Databricks DBFS via the REST API.
+      Requires: DATABRICKS_HOST, DATABRICKS_TOKEN.
+      No AWS credentials needed.
+
+  aws (secondary)
+      Writes JSON to S3 (partitioned by date/hour) and optionally puts records
+      to a Kinesis Data Stream and publishes metrics to CloudWatch.
+      Requires: AWS credentials, PMT_S3_BUCKET.
 
 Environment variables
 ---------------------
-AWS_REGION          AWS region (default: us-east-1)
-S3_BUCKET           Target S3 bucket (default: predictive-maintenance-twin-raw)
-S3_PREFIX           S3 key prefix (default: raw)
-KINESIS_STREAM      Kinesis stream name (default: pmt-sensor-stream).
-                    Set to empty string to disable Kinesis.
+PMT_BACKEND         Storage backend: 'databricks' (default) or 'aws'
+DATABRICKS_HOST     Databricks workspace URL (required for databricks backend)
+DATABRICKS_TOKEN    Databricks personal access token (required for databricks backend)
+DBFS_RAW_PATH       DBFS path for raw JSON files (default: /pmt/raw)
+AWS_REGION          AWS region (default: us-east-1)  [aws backend only]
+PMT_S3_BUCKET       Target S3 bucket  [aws backend only]
+S3_PREFIX           S3 key prefix (default: raw)  [aws backend only]
+KINESIS_STREAM      Kinesis stream name. Empty string disables Kinesis.  [aws backend only]
 CONFIG_PATH         Path to YAML config file (default: ingestion/config.example.yaml)
 LOG_LEVEL           Logging verbosity (default: INFO)
-DRY_RUN             Set to 'true' to skip all AWS writes (default: false)
+DRY_RUN             Set to 'true' to skip all writes (default: false)
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import logging
 import os
@@ -363,7 +377,106 @@ class KinesisProducer:
 
 
 # ---------------------------------------------------------------------------
-# CloudWatch reporter
+# DBFS writer (Databricks primary backend)
+# ---------------------------------------------------------------------------
+
+
+class DBFSWriter:
+    """Writes SensorReading records to a Unity Catalog Volume via the Files API.
+
+    Uses ``PUT /api/2.0/fs/files{path}`` with raw bytes — works on Unity
+    Catalog-enabled workspaces where DBFS root write access is restricted.
+    The volume path must start with ``/Volumes/<catalog>/<schema>/<volume>``.
+    """
+
+    def __init__(self, volume_path: str, host: str, token: str) -> None:
+        """
+        Initialise the volume writer.
+
+        Parameters
+        ----------
+        volume_path:
+            UC Volume root path for raw JSON files.
+            Must be in the form ``/Volumes/<catalog>/<schema>/<volume>``
+            (e.g. ``/Volumes/workspace/predictive_maintenance/raw``).
+        host:
+            Databricks workspace URL (e.g. https://dbc-xxxx.cloud.databricks.com).
+        token:
+            Databricks personal access token or OAuth token.
+        """
+        self.volume_path = volume_path.rstrip("/")
+        self._host = host.rstrip("/")
+        self._headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/octet-stream",
+        }
+
+    def _build_path(self, reading: SensorReading) -> str:
+        """
+        Build the partitioned volume path for a reading.
+
+        Partition scheme mirrors the S3 layout so Auto Loader config is
+        interchangeable between backends:
+        ``<volume_path>/year=YYYY/month=MM/day=DD/hour=HH/<uuid>.json``
+        """
+        now = datetime.now(timezone.utc)
+        return (
+            f"{self.volume_path}/"
+            f"year={now.year:04d}/"
+            f"month={now.month:02d}/"
+            f"day={now.day:02d}/"
+            f"hour={now.hour:02d}/"
+            f"{uuid.uuid4()}.json"
+        )
+
+    @retry(
+        retry=retry_if_exception_type(requests.RequestException),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=1, max=32),
+        reraise=True,
+    )
+    def write(self, reading: SensorReading, dry_run: bool = False) -> str:
+        """
+        Write a single reading to the UC Volume as a JSON file.
+
+        Parameters
+        ----------
+        reading:
+            The sensor reading to persist.
+        dry_run:
+            If True, log the intended write but skip the actual API call.
+
+        Returns
+        -------
+        The volume path that was (or would have been) written.
+        """
+        path = self._build_path(reading)
+        body = reading.to_json().encode("utf-8")
+
+        if dry_run:
+            logger.info("[DRY-RUN] Would write %s (%d bytes)", path, len(body))
+            return path
+
+        try:
+            response = requests.put(
+                f"{self._host}/api/2.0/fs/files{path}",
+                headers=self._headers,
+                data=body,
+                timeout=30,
+            )
+            response.raise_for_status()
+            logger.info("Wrote %s (%d bytes)", path, len(body))
+            return path
+        except requests.HTTPError as exc:
+            logger.error("Volume write failed for %s: %s", path, exc)
+            raise
+        except requests.RequestException as exc:
+            logger.error("Network error writing to %s: %s", path, exc)
+            raise
+
+
+# ---------------------------------------------------------------------------
+# CloudWatch reporter (AWS secondary backend)
 # ---------------------------------------------------------------------------
 
 
@@ -483,8 +596,19 @@ def build_channels(config: dict) -> list[ChannelConfig]:
 
 def main() -> None:
     """Parse arguments and run the ingestion loop."""
+    import time
+
     parser = argparse.ArgumentParser(
-        description="ThingSpeak → S3 + Kinesis ingestion producer"
+        description="ThingSpeak ingestion producer — Databricks-primary, AWS-secondary"
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["databricks", "aws"],
+        default=os.environ.get("PMT_BACKEND", "databricks"),
+        help=(
+            "Storage backend: 'databricks' (default, writes to DBFS) "
+            "or 'aws' (writes to S3 + Kinesis + CloudWatch)"
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -505,29 +629,48 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.dry_run:
-        logger.info("=== DRY-RUN MODE — no AWS writes will be performed ===")
+        logger.info("=== DRY-RUN MODE — no writes will be performed ===")
 
     config = load_config(args.config)
     channels = build_channels(config)
-
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    bucket = os.environ.get("S3_BUCKET", "predictive-maintenance-twin-raw")
-    s3_prefix = os.environ.get("S3_PREFIX", "raw")
-    kinesis_stream = os.environ.get("KINESIS_STREAM", "pmt-sensor-stream")
     poll_interval = config.get("thingspeak", {}).get("poll_interval_seconds", 60)
 
     poller = ThingSpeakPoller(channels=channels, config=config)
-    s3_writer = S3Writer(bucket=bucket, prefix=s3_prefix, region=region)
-    kinesis_producer = KinesisProducer(stream_name=kinesis_stream, region=region)
-    cw_reporter = CloudWatchReporter(region=region)
 
-    import time
+    # ── Build backend writer ───────────────────────────────────────────────────
+    if args.backend == "databricks":
+        db_host = os.environ.get("DATABRICKS_HOST", "")
+        db_token = os.environ.get("DATABRICKS_TOKEN", "")
+        volume_path = os.environ.get(
+            "DBFS_RAW_PATH", "/Volumes/workspace/predictive_maintenance/raw"
+        )
+        if not db_host and not args.dry_run:
+            logger.error("DATABRICKS_HOST is not set. Use --dry-run or set the env var.")
+            sys.exit(1)
+        writer: DBFSWriter | S3Writer = DBFSWriter(
+            volume_path=volume_path, host=db_host, token=db_token
+        )
+        logger.info(
+            "Backend: Databricks Volumes | host=%s | path=%s", db_host or "<dry-run>", volume_path
+        )
+    else:
+        region = os.environ.get("AWS_REGION", "us-east-1")
+        bucket = os.environ.get("PMT_S3_BUCKET", "predictive-maintenance-twin-raw")
+        s3_prefix = os.environ.get("S3_PREFIX", "raw")
+        kinesis_stream = os.environ.get("KINESIS_STREAM", "pmt-sensor-stream")
+        writer = S3Writer(bucket=bucket, prefix=s3_prefix, region=region)
+        kinesis_producer = KinesisProducer(stream_name=kinesis_stream, region=region)
+        cw_reporter = CloudWatchReporter(region=region)
+        logger.info(
+            "Backend: AWS | bucket=%s | kinesis=%s | region=%s", bucket, kinesis_stream, region
+        )
 
     logger.info(
-        "Starting ingestion producer | channels=%d | poll_interval=%ds | dry_run=%s",
+        "Starting ingestion producer | channels=%d | poll_interval=%ds | dry_run=%s | backend=%s",
         len(channels),
         poll_interval,
         args.dry_run,
+        args.backend,
     )
 
     while True:
@@ -537,11 +680,12 @@ def main() -> None:
                 if reading is None:
                     continue
 
-                s3_writer.write(reading, dry_run=args.dry_run)
-                kinesis_producer.put_record(reading, dry_run=args.dry_run)
+                writer.write(reading, dry_run=args.dry_run)
 
-                if not args.dry_run:
-                    cw_reporter.record_ingestion(count=1, device_id=reading.device_id)
+                if args.backend == "aws":
+                    kinesis_producer.put_record(reading, dry_run=args.dry_run)  # type: ignore[union-attr]
+                    if not args.dry_run:
+                        cw_reporter.record_ingestion(count=1, device_id=reading.device_id)  # type: ignore[union-attr]
 
                 logger.info(
                     "Ingested: device=%s entry_id=%d vibration=%.3f temp=%.2f pressure=%.3f",

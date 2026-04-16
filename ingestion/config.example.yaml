@@ -6,14 +6,29 @@
 #   2. Fill in real values or point to environment variables (see notes below).
 #   3. For local dev, put secrets in .env and load with python-dotenv;
 #      never commit .env or config.yaml.
-#   4. In CI/CD and Databricks, inject secrets via AWS Secrets Manager or
-#      Databricks Secret Scopes — do NOT hard-code credentials here.
+#   4. In CI/CD and Databricks, inject secrets via Databricks Secret Scopes —
+#      do NOT hard-code credentials here.
+#
+# BACKEND SELECTION:
+#   Set `backend: databricks` (default) to write sensor data directly to
+#   Databricks DBFS — no AWS account needed.
+#   Set `backend: aws` to use S3 + Kinesis + CloudWatch (secondary path).
+#   Override at runtime with the PMT_BACKEND environment variable or
+#   the --backend CLI flag.
 #
 # DRY-RUN MODE:
 #   Set env var DRY_RUN=true (or pass --dry-run on the CLI).
-#   When active, the poller fetches ThingSpeak data but skips all writes to
-#   S3 and Kinesis. Useful for integration testing without AWS charges.
+#   When active, the poller fetches ThingSpeak data but skips all writes.
 # =============================================================================
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Backend selection
+# ─────────────────────────────────────────────────────────────────────────────
+# Primary: 'databricks' — writes JSON to DBFS, no AWS credentials required.
+# Secondary: 'aws' — writes to S3 + Kinesis + CloudWatch.
+# Override with env var: PMT_BACKEND or CLI flag: --backend databricks|aws
+backend: "databricks"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -54,7 +69,31 @@ thingspeak:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# AWS configuration
+# Databricks configuration (primary backend)
+# Credentials: NEVER put tokens here. Use one of:
+#   - Env vars: DATABRICKS_HOST, DATABRICKS_TOKEN  (recommended)
+#   - Databricks Secret Scopes in a notebook or job
+#   - ~/.databrickscfg (local dev only, never on shared machines)
+# ─────────────────────────────────────────────────────────────────────────────
+databricks:
+  # Workspace URL — override with env var: DATABRICKS_HOST
+  host: ""
+
+  # Unity Catalog Volume path that receives raw JSON sensor records.
+  # Must be /Volumes/<catalog>/<schema>/<volume> — DBFS root write is
+  # disabled on Unity Catalog workspaces.
+  # Final file path: <volume_path>/year=YYYY/month=MM/day=DD/hour=HH/<uuid>.json
+  # Auto Loader in bronze_ingest.py reads directly from this path.
+  # Override with env var: DBFS_RAW_PATH
+  dbfs_path: "/Volumes/workspace/predictive_maintenance/raw"
+
+  # Auto Loader checkpoint path (inside the same volume).
+  # Override with env var: DBFS_CHECKPOINT_PATH
+  checkpoint_path: "/Volumes/workspace/predictive_maintenance/raw/_checkpoints/bronze_sensors"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AWS configuration (secondary backend — only used when backend: aws)
 # Credentials: NEVER put AWS keys here. Use one of:
 #   - IAM instance/task role (recommended for EC2 / ECS / Databricks)
 #   - Env vars: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN

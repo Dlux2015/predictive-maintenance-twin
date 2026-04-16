@@ -1,20 +1,31 @@
 """
 Bronze layer ingestion: Raw JSON → Bronze Delta table using Databricks Auto Loader.
 
-Reads raw sensor JSON files from S3 using Auto Loader (cloudFiles format),
-adds audit columns, runs data quality checks, and appends to the
-bronze_sensors Delta table (append-only, no deduplication at this layer).
+Reads raw sensor JSON files using Auto Loader (cloudFiles format), adds audit
+columns, runs data quality checks, and appends to the bronze_sensors Delta table
+(append-only, no deduplication at this layer).
+
+Backend selection (PMT_BACKEND env var or --backend flag):
+  databricks (default)
+      Reads from DBFS: dbfs:/pmt/raw/
+      Checkpoints stored in DBFS: dbfs:/pmt/checkpoints/bronze_sensors/
+      No AWS credentials required.
+  aws (secondary)
+      Reads from S3 via Auto Loader: s3://<PMT_S3_BUCKET>/raw/
+      Checkpoints stored in S3: s3://<PMT_S3_BUCKET>/checkpoints/bronze_sensors/
 
 Usage
 -----
-    python etl/bronze_ingest.py [--trigger-once] [--s3-path S3_PATH] [--checkpoint-path PATH]
+    python etl/bronze_ingest.py [--trigger-once] [--source-path PATH] [--checkpoint-path PATH]
 
 Environment variables
 ---------------------
+PMT_BACKEND             'databricks' (default) or 'aws'
 DATABRICKS_CATALOG      Unity Catalog catalog name (default: main)
 DATABRICKS_SCHEMA       Schema name (default: predictive_maintenance)
-S3_BUCKET               Source S3 bucket
-AWS_REGION              AWS region (default: us-east-1)
+DBFS_RAW_PATH           DBFS source path  [databricks backend]
+DBFS_CHECKPOINT_PATH    DBFS checkpoint path  [databricks backend]
+PMT_S3_BUCKET           S3 bucket name  [aws backend]
 """
 
 from __future__ import annotations
@@ -48,9 +59,23 @@ logger = logging.getLogger(__name__)
 DEFAULT_CATALOG = os.environ.get("DATABRICKS_CATALOG", "main")
 DEFAULT_SCHEMA = os.environ.get("DATABRICKS_SCHEMA", "predictive_maintenance")
 DEFAULT_TABLE = f"{DEFAULT_CATALOG}.{DEFAULT_SCHEMA}.bronze_sensors"
-DEFAULT_S3_BUCKET = os.environ.get("S3_BUCKET", "predictive-maintenance-twin-raw")
-DEFAULT_S3_PATH = f"s3://{DEFAULT_S3_BUCKET}/raw/"
-DEFAULT_CHECKPOINT = f"s3://{DEFAULT_S3_BUCKET}/checkpoints/bronze_sensors/"
+
+# ── Backend-aware path defaults ───────────────────────────────────────────────
+_BACKEND = os.environ.get("PMT_BACKEND", "databricks")
+
+if _BACKEND == "aws":
+    _S3_BUCKET = os.environ.get("PMT_S3_BUCKET", "predictive-maintenance-twin-raw")
+    DEFAULT_SOURCE_PATH = f"s3://{_S3_BUCKET}/raw/"
+    DEFAULT_CHECKPOINT = f"s3://{_S3_BUCKET}/checkpoints/bronze_sensors/"
+else:
+    # Databricks primary: read from UC Volume (no AWS credentials required)
+    DEFAULT_SOURCE_PATH = os.environ.get(
+        "DBFS_RAW_PATH", "/Volumes/workspace/predictive_maintenance/raw/"
+    )
+    DEFAULT_CHECKPOINT = os.environ.get(
+        "DBFS_CHECKPOINT_PATH",
+        "/Volumes/workspace/predictive_maintenance/raw/_checkpoints/bronze_sensors/",
+    )
 
 
 class BronzeIngestor:
@@ -64,7 +89,7 @@ class BronzeIngestor:
     def __init__(
         self,
         spark: SparkSession,
-        s3_path: str = DEFAULT_S3_PATH,
+        source_path: str = DEFAULT_SOURCE_PATH,
         table_name: str = DEFAULT_TABLE,
     ) -> None:
         """
@@ -74,13 +99,14 @@ class BronzeIngestor:
         ----------
         spark:
             Active SparkSession.
-        s3_path:
-            S3 path containing raw JSON files (e.g. s3://bucket/raw/).
+        source_path:
+            Path containing raw JSON files. Accepts DBFS (``dbfs:/pmt/raw/``)
+            or S3 (``s3://bucket/raw/``) — Auto Loader handles both.
         table_name:
             Three-part Delta table name to write to.
         """
         self.spark = spark
-        self.s3_path = s3_path
+        self.source_path = source_path
         self.table_name = table_name
 
     def get_schema(self) -> StructType:
@@ -109,30 +135,33 @@ class BronzeIngestor:
         self, checkpoint_path: str = DEFAULT_CHECKPOINT
     ) -> DataFrame:
         """
-        Read incremental raw JSON files from S3 using Databricks Auto Loader.
+        Read incremental raw JSON files using Databricks Auto Loader.
 
-        Auto Loader uses file notifications (SQS + SNS) or directory listing
-        to discover new files incrementally without re-scanning the full prefix.
+        Auto Loader uses directory listing to discover new files incrementally
+        without re-scanning the full prefix. Works with both DBFS (primary)
+        and S3 (secondary) source paths.
 
         Parameters
         ----------
         checkpoint_path:
-            S3 or DBFS path for storing Auto Loader checkpoints.
+            DBFS or S3 path for storing Auto Loader checkpoints.
             Must be stable between job runs.
 
         Returns
         -------
-        Streaming or static DataFrame of raw sensor records.
+        Streaming DataFrame of raw sensor records.
         """
-        logger.info("Configuring Auto Loader: source=%s checkpoint=%s", self.s3_path, checkpoint_path)
+        logger.info(
+            "Configuring Auto Loader: source=%s checkpoint=%s", self.source_path, checkpoint_path
+        )
         return (
             self.spark.readStream.format("cloudFiles")
             .option("cloudFiles.format", "json")
             .option("cloudFiles.schemaLocation", checkpoint_path + "/_schema")
             .option("cloudFiles.inferColumnTypes", "false")
-            .option("cloudFiles.useNotifications", "false")  # use directory listing for portability
+            .option("cloudFiles.useNotifications", "false")  # directory listing — works for DBFS and S3
             .schema(self.get_schema())
-            .load(self.s3_path)
+            .load(self.source_path)
         )
 
     def add_audit_columns(self, df: DataFrame) -> DataFrame:
@@ -254,16 +283,24 @@ class BronzeIngestor:
 
 def main() -> None:
     """Parse arguments and run Bronze ingestion."""
-    parser = argparse.ArgumentParser(description="Bronze layer ingestion: S3 JSON → Delta")
+    parser = argparse.ArgumentParser(
+        description="Bronze layer ingestion: raw JSON (DBFS or S3) → Delta"
+    )
     parser.add_argument("--trigger-once", action="store_true", default=True,
                         help="Process all available files once and stop")
-    parser.add_argument("--s3-path", default=DEFAULT_S3_PATH)
+    parser.add_argument(
+        "--source-path",
+        default=DEFAULT_SOURCE_PATH,
+        help="Source path for raw JSON files (dbfs:/... or s3://...)",
+    )
     parser.add_argument("--checkpoint-path", default=DEFAULT_CHECKPOINT)
     parser.add_argument("--table-name", default=DEFAULT_TABLE)
     args = parser.parse_args()
 
     spark = get_spark_session(app_name="pmt-bronze-ingest")
-    ingestor = BronzeIngestor(spark=spark, s3_path=args.s3_path, table_name=args.table_name)
+    ingestor = BronzeIngestor(
+        spark=spark, source_path=args.source_path, table_name=args.table_name
+    )
     ingestor.run(checkpoint_path=args.checkpoint_path, trigger_once=args.trigger_once)
 
 

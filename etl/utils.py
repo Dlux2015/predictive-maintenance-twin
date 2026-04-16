@@ -15,8 +15,6 @@ import os
 from datetime import datetime, timezone
 from typing import Optional
 
-import boto3
-from botocore.exceptions import ClientError
 from pyspark.sql import DataFrame, SparkSession
 
 logger = logging.getLogger(__name__)
@@ -335,7 +333,10 @@ def publish_pipeline_metric(
     region: str = DEFAULT_REGION,
 ) -> None:
     """
-    Publish a single custom metric to CloudWatch.
+    Publish a single custom metric to CloudWatch (AWS secondary backend only).
+
+    This is a no-op when boto3 is not installed or AWS credentials are not
+    configured — the pipeline continues normally and logs a debug message.
 
     Parameters
     ----------
@@ -350,7 +351,13 @@ def publish_pipeline_metric(
     region:
         AWS region.
     """
-    cw = boto3.client("cloudwatch", region_name=region)
+    try:
+        import boto3
+        from botocore.exceptions import BotoCoreError, ClientError
+    except ImportError:
+        logger.debug("boto3 not installed — skipping CloudWatch metric '%s'", metric_name)
+        return
+
     metric_data: dict = {
         "MetricName": metric_name,
         "Value": value,
@@ -361,7 +368,11 @@ def publish_pipeline_metric(
         metric_data["Dimensions"] = [{"Name": k, "Value": v} for k, v in dimensions.items()]
 
     try:
+        cw = boto3.client("cloudwatch", region_name=region)
         cw.put_metric_data(Namespace=CLOUDWATCH_NAMESPACE, MetricData=[metric_data])
         logger.debug("Published CloudWatch metric: %s=%.2f %s", metric_name, value, unit)
-    except ClientError as exc:
-        logger.error("Failed to publish metric %s: %s", metric_name, exc.response["Error"]["Message"])
+    except (ClientError, BotoCoreError) as exc:
+        # Covers NoCredentialsError, EndpointResolutionError, etc.
+        logger.warning(
+            "Could not publish CloudWatch metric '%s' (AWS unavailable): %s", metric_name, exc
+        )

@@ -29,7 +29,7 @@ import logging
 import os
 
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.errors import AlreadyExists, NotFound
+from databricks.sdk.errors import AlreadyExists, BadRequest, NotFound
 from databricks.sdk.service.catalog import (
     CatalogInfo,
     IsolationMode,
@@ -227,8 +227,12 @@ class UnityCatalogSetup:
                 comment="Predictive maintenance sensor data — Bronze, Silver, Gold tables",
             )
             logger.info("Created schema: %s.%s", catalog, schema)
-        except AlreadyExists:
-            logger.info("Schema '%s.%s' already exists — skipping", catalog, schema)
+        except (AlreadyExists, BadRequest) as exc:
+            if "already exists" in str(exc).lower():
+                logger.info("Schema '%s.%s' already exists — skipping", catalog, schema)
+            else:
+                logger.error("Failed to create schema '%s.%s': %s", catalog, schema, exc)
+                raise
         except Exception as exc:
             logger.error("Failed to create schema '%s.%s': %s", catalog, schema, exc)
             raise
