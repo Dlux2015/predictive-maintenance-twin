@@ -72,7 +72,7 @@ jobs:
           cache: pip
 
       - name: Install lint dependencies
-        run: pip install black mypy types-requests types-PyYAML ruff
+        run: pip install "black==24.4.2" mypy types-requests types-PyYAML ruff
 
       - name: Black (format check)
         run: black --check --diff .
