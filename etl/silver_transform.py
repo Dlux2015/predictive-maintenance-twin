@@ -218,42 +218,35 @@ class SilverTransformer:
         """
         logger.info("Merging %d rows into Silver table: %s", df.count(), self.silver_table)
 
-        # Create table if it doesn't exist yet
-        try:
-            self.spark.sql(f"""
-                CREATE TABLE IF NOT EXISTS {self.silver_table} (
-                    device_id STRING,
-                    entry_id BIGINT,
-                    recorded_at TIMESTAMP,
-                    vibration_rms DOUBLE,
-                    temperature_celsius DOUBLE,
-                    pressure_bar DOUBLE,
-                    source_channel INT,
-                    ingested_at STRING,
-                    _ingested_at TIMESTAMP,
-                    _source_file STRING,
-                    _batch_id STRING,
-                    _silver_updated_at TIMESTAMP
-                )
-                USING DELTA
-                PARTITIONED BY (date(recorded_at))
-                LOCATION 's3://{os.environ.get("S3_BUCKET", "predictive-maintenance-twin-raw")}/silver/'
-            """)
-        except Exception as exc:
-            logger.debug("Table may already exist: %s", exc)
-
         # Add silver audit timestamp
         df = df.withColumn("_silver_updated_at", F.current_timestamp())
 
-        target = DeltaTable.forName(self.spark, self.silver_table)
-        (
-            target.alias("target")
-            .merge(df.alias("source"), "target.device_id = source.device_id AND target.entry_id = source.entry_id")
-            .whenMatchedUpdateAll()
-            .whenNotMatchedInsertAll()
-            .execute()
-        )
-        logger.info("MERGE complete for %s", self.silver_table)
+        table_exists = self.spark.catalog.tableExists(self.silver_table)
+
+        if not table_exists:
+            # First run — create the managed Delta table via a plain write.
+            # Unity Catalog manages the storage location; no LOCATION clause needed.
+            logger.info("Silver table does not exist — creating via initial write")
+            (
+                df.write
+                .format("delta")
+                .mode("overwrite")
+                .saveAsTable(self.silver_table)
+            )
+            logger.info("Silver table created: %s", self.silver_table)
+        else:
+            target = DeltaTable.forName(self.spark, self.silver_table)
+            (
+                target.alias("target")
+                .merge(
+                    df.alias("source"),
+                    "target.device_id = source.device_id AND target.entry_id = source.entry_id",
+                )
+                .whenMatchedUpdateAll()
+                .whenNotMatchedInsertAll()
+                .execute()
+            )
+            logger.info("MERGE complete for %s", self.silver_table)
 
     def run(self) -> None:
         """
