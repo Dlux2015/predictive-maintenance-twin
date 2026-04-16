@@ -203,11 +203,7 @@ class GoldAggregator:
         DataFrame with vibration_zscore column added (null when stddev = 0).
         """
         # 2-row window corresponds to current day + previous day (24-hour rolling)
-        window = (
-            Window.partitionBy("device_id")
-            .orderBy("date")
-            .rowsBetween(-1, 0)
-        )
+        window = Window.partitionBy("device_id").orderBy("date").rowsBetween(-1, 0)
         rolling_mean = F.avg("avg_vibration_rms").over(window)
         rolling_std = F.stddev("avg_vibration_rms").over(window)
 
@@ -261,8 +257,7 @@ class GoldAggregator:
         # spark.conf.set is not available in Spark Connect; pass as writer option instead
         partition_col = "date" if "date" in df.columns else "window_start"
         (
-            df.write
-            .format("delta")
+            df.write.format("delta")
             .mode("overwrite")
             .option("partitionOverwriteMode", "dynamic")
             .partitionBy(partition_col)
@@ -300,7 +295,9 @@ class GoldAggregator:
         for table in (GOLD_HOURLY_TABLE, GOLD_DAILY_TABLE):
             logger.info("Running VACUUM RETAIN %d HOURS on %s", retain_hours, table)
             try:
-                self.spark.conf.set("spark.databricks.delta.retentionDurationCheck.enabled", "false")
+                self.spark.conf.set(
+                    "spark.databricks.delta.retentionDurationCheck.enabled", "false"
+                )
                 self.spark.sql(f"VACUUM {table} RETAIN {retain_hours} HOURS")
                 logger.info("VACUUM complete: %s", table)
             except Exception as exc:
@@ -358,22 +355,33 @@ class GoldAggregator:
             publish_pipeline_metric("GoldDailyRowCount", float(daily_count), "Count")
 
             # Count at-risk devices
-            at_risk = self.spark.table(GOLD_DAILY_TABLE).filter(F.col("is_at_risk")).select("device_id").distinct().count()
+            at_risk = (
+                self.spark.table(GOLD_DAILY_TABLE)
+                .filter(F.col("is_at_risk"))
+                .select("device_id")
+                .distinct()
+                .count()
+            )
             publish_pipeline_metric("AtRiskDeviceCount", float(at_risk), "Count")
 
             # Max z-score across all devices today
             from pyspark.sql import functions as F2
+
             max_zscore = (
                 self.spark.table(GOLD_DAILY_TABLE)
                 .filter(F.col("date") == F.current_date())
                 .agg(F.max("vibration_zscore").alias("max_z"))
-                .collect()[0]["max_z"] or 0.0
+                .collect()[0]["max_z"]
+                or 0.0
             )
             publish_pipeline_metric("MaxVibrationZScore", float(max_zscore), "None")
 
             logger.info(
                 "Gold metrics: hourly=%d daily=%d at_risk_devices=%d max_zscore=%.3f",
-                hourly_count, daily_count, at_risk, max_zscore,
+                hourly_count,
+                daily_count,
+                at_risk,
+                max_zscore,
             )
         except Exception as exc:
             logger.warning("Could not publish Gold CloudWatch metrics: %s", exc)
@@ -383,7 +391,9 @@ class GoldAggregator:
 
 def main() -> None:
     """Parse arguments and run Gold aggregation."""
-    parser = argparse.ArgumentParser(description="Gold aggregation: Silver → KPI Delta tables")
+    parser = argparse.ArgumentParser(
+        description="Gold aggregation: Silver → KPI Delta tables"
+    )
     parser.add_argument("--skip-optimize", action="store_true")
     parser.add_argument("--skip-vacuum", action="store_true")
     parser.add_argument("--catalog", default=DEFAULT_CATALOG)

@@ -24,7 +24,12 @@ import os
 
 import boto3
 from botocore.exceptions import ClientError
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -71,7 +76,11 @@ class S3Setup:
         us-east-1 does not accept a LocationConstraint — handled automatically.
         """
         if self.dry_run:
-            logger.info("[DRY-RUN] Would create bucket: s3://%s (region=%s)", self.bucket, self.region)
+            logger.info(
+                "[DRY-RUN] Would create bucket: s3://%s (region=%s)",
+                self.bucket,
+                self.region,
+            )
             return
 
         try:
@@ -86,9 +95,15 @@ class S3Setup:
         except ClientError as exc:
             code = exc.response["Error"]["Code"]
             if code in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
-                logger.info("Bucket s3://%s already exists — skipping create", self.bucket)
+                logger.info(
+                    "Bucket s3://%s already exists — skipping create", self.bucket
+                )
             else:
-                logger.error("Failed to create bucket s3://%s: %s", self.bucket, exc.response["Error"]["Message"])
+                logger.error(
+                    "Failed to create bucket s3://%s: %s",
+                    self.bucket,
+                    exc.response["Error"]["Message"],
+                )
                 raise
 
     def enable_versioning(self) -> None:
@@ -103,7 +118,9 @@ class S3Setup:
             )
             logger.info("Enabled versioning on s3://%s", self.bucket)
         except ClientError as exc:
-            logger.error("Failed to enable versioning: %s", exc.response["Error"]["Message"])
+            logger.error(
+                "Failed to enable versioning: %s", exc.response["Error"]["Message"]
+            )
             raise
 
     def set_lifecycle_policy(self) -> None:
@@ -143,7 +160,9 @@ class S3Setup:
             )
             logger.info("Applied lifecycle policy to s3://%s", self.bucket)
         except ClientError as exc:
-            logger.error("Failed to set lifecycle policy: %s", exc.response["Error"]["Message"])
+            logger.error(
+                "Failed to set lifecycle policy: %s", exc.response["Error"]["Message"]
+            )
             raise
 
     def create_folder_structure(self) -> None:
@@ -155,13 +174,19 @@ class S3Setup:
         prefixes = ["raw/", "bronze/", "silver/", "gold/", "firehose/", "checkpoints/"]
         for prefix in prefixes:
             if self.dry_run:
-                logger.info("[DRY-RUN] Would create folder s3://%s/%s", self.bucket, prefix)
+                logger.info(
+                    "[DRY-RUN] Would create folder s3://%s/%s", self.bucket, prefix
+                )
                 continue
             try:
                 self._s3.put_object(Bucket=self.bucket, Key=prefix, Body=b"")
                 logger.info("Created folder s3://%s/%s", self.bucket, prefix)
             except ClientError as exc:
-                logger.error("Failed to create folder %s: %s", prefix, exc.response["Error"]["Message"])
+                logger.error(
+                    "Failed to create folder %s: %s",
+                    prefix,
+                    exc.response["Error"]["Message"],
+                )
                 raise
 
     def set_bucket_policy(self) -> None:
@@ -171,7 +196,9 @@ class S3Setup:
         This enforces encryption in transit for all data movement.
         """
         if self.dry_run:
-            logger.info("[DRY-RUN] Would set deny-HTTP bucket policy on s3://%s", self.bucket)
+            logger.info(
+                "[DRY-RUN] Would set deny-HTTP bucket policy on s3://%s", self.bucket
+            )
             return
 
         policy = {
@@ -186,9 +213,7 @@ class S3Setup:
                         f"arn:aws:s3:::{self.bucket}",
                         f"arn:aws:s3:::{self.bucket}/*",
                     ],
-                    "Condition": {
-                        "Bool": {"aws:SecureTransport": "false"}
-                    },
+                    "Condition": {"Bool": {"aws:SecureTransport": "false"}},
                 }
             ],
         }
@@ -199,12 +224,19 @@ class S3Setup:
             )
             logger.info("Applied deny-HTTP bucket policy to s3://%s", self.bucket)
         except ClientError as exc:
-            logger.error("Failed to set bucket policy: %s", exc.response["Error"]["Message"])
+            logger.error(
+                "Failed to set bucket policy: %s", exc.response["Error"]["Message"]
+            )
             raise
 
     def setup_all(self) -> None:
         """Run the full bucket setup sequence."""
-        logger.info("Starting S3 setup for bucket: %s (region=%s, dry_run=%s)", self.bucket, self.region, self.dry_run)
+        logger.info(
+            "Starting S3 setup for bucket: %s (region=%s, dry_run=%s)",
+            self.bucket,
+            self.region,
+            self.dry_run,
+        )
         self.create_bucket()
         self.enable_versioning()
         self.set_lifecycle_policy()
@@ -215,10 +247,18 @@ class S3Setup:
 
 def main() -> None:
     """Parse arguments and run S3 bucket setup."""
-    parser = argparse.ArgumentParser(description="Set up S3 bucket for predictive maintenance pipeline")
-    parser.add_argument("--dry-run", action="store_true", help="Log actions without executing")
-    parser.add_argument("--bucket", default=os.environ.get("PMT_S3_BUCKET", DEFAULT_BUCKET))
-    parser.add_argument("--region", default=os.environ.get("AWS_REGION", DEFAULT_REGION))
+    parser = argparse.ArgumentParser(
+        description="Set up S3 bucket for predictive maintenance pipeline"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Log actions without executing"
+    )
+    parser.add_argument(
+        "--bucket", default=os.environ.get("PMT_S3_BUCKET", DEFAULT_BUCKET)
+    )
+    parser.add_argument(
+        "--region", default=os.environ.get("AWS_REGION", DEFAULT_REGION)
+    )
     args = parser.parse_args()
 
     setup = S3Setup(bucket=args.bucket, region=args.region, dry_run=args.dry_run)

@@ -69,13 +69,16 @@ def get_spark_session(
         builder = builder.config(
             "spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension"
         ).config(
-            "spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
 
     spark = builder.getOrCreate()
     spark.catalog.setCurrentCatalog(catalog)
     spark.conf.set("spark.sql.shuffle.partitions", "8")
-    logger.info("Created local SparkSession with app_name=%s catalog=%s", app_name, catalog)
+    logger.info(
+        "Created local SparkSession with app_name=%s catalog=%s", app_name, catalog
+    )
     return spark
 
 
@@ -144,7 +147,11 @@ class DataQualityChecker:
         logger.log(
             level,
             "[DQ] %s | null_rate(%s)=%.2f%% threshold=%.2f%% passed=%s",
-            self.table_name, column, rate * 100, threshold * 100, passed,
+            self.table_name,
+            column,
+            rate * 100,
+            threshold * 100,
+            passed,
         )
         return passed
 
@@ -168,7 +175,10 @@ class DataQualityChecker:
         logger.log(
             level,
             "[DQ] %s | row_count=%d min_rows=%d passed=%s",
-            self.table_name, count, min_rows, passed,
+            self.table_name,
+            count,
+            min_rows,
+            passed,
         )
         return passed
 
@@ -201,7 +211,12 @@ class DataQualityChecker:
         logger.log(
             level,
             "[DQ] %s | value_range(%s) [%.2f, %.2f] out_of_range=%d passed=%s",
-            self.table_name, column, min_val, max_val, out_of_range, passed,
+            self.table_name,
+            column,
+            min_val,
+            max_val,
+            out_of_range,
+            passed,
         )
         return passed
 
@@ -214,7 +229,7 @@ class DataQualityChecker:
         Dict mapping check name to pass/fail boolean.
         """
         self.check_row_count(min_rows=1)
-        self.check_null_rate("device_id", threshold=0.0)   # device_id must never be null
+        self.check_null_rate("device_id", threshold=0.0)  # device_id must never be null
         self.check_null_rate("entry_id", threshold=0.0)
         self.check_null_rate("recorded_at", threshold=0.0)
         self.check_null_rate("vibration_rms", threshold=0.5)
@@ -230,7 +245,10 @@ class DataQualityChecker:
         logger.log(
             level,
             "[DQ SUMMARY] %s | checks=%d passed=%d failed=%d",
-            self.table_name, len(self._results), passed, failed,
+            self.table_name,
+            len(self._results),
+            passed,
+            failed,
         )
 
 
@@ -355,7 +373,9 @@ def publish_pipeline_metric(
         import boto3
         from botocore.exceptions import BotoCoreError, ClientError
     except ImportError:
-        logger.debug("boto3 not installed — skipping CloudWatch metric '%s'", metric_name)
+        logger.debug(
+            "boto3 not installed — skipping CloudWatch metric '%s'", metric_name
+        )
         return
 
     metric_data: dict = {
@@ -365,14 +385,20 @@ def publish_pipeline_metric(
         "Timestamp": datetime.now(timezone.utc),
     }
     if dimensions:
-        metric_data["Dimensions"] = [{"Name": k, "Value": v} for k, v in dimensions.items()]
+        metric_data["Dimensions"] = [
+            {"Name": k, "Value": v} for k, v in dimensions.items()
+        ]
 
     try:
         cw = boto3.client("cloudwatch", region_name=region)
         cw.put_metric_data(Namespace=CLOUDWATCH_NAMESPACE, MetricData=[metric_data])
-        logger.debug("Published CloudWatch metric: %s=%.2f %s", metric_name, value, unit)
+        logger.debug(
+            "Published CloudWatch metric: %s=%.2f %s", metric_name, value, unit
+        )
     except (ClientError, BotoCoreError) as exc:
         # Covers NoCredentialsError, EndpointResolutionError, etc.
         logger.warning(
-            "Could not publish CloudWatch metric '%s' (AWS unavailable): %s", metric_name, exc
+            "Could not publish CloudWatch metric '%s' (AWS unavailable): %s",
+            metric_name,
+            exc,
         )

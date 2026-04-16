@@ -92,7 +92,9 @@ class KinesisStub:
             "StreamName": StreamName,
         }
         self._records.append(entry)
-        logger.debug("KinesisStub.put_record: seq=%s partition=%s", seq_number, PartitionKey)
+        logger.debug(
+            "KinesisStub.put_record: seq=%s partition=%s", seq_number, PartitionKey
+        )
         return {"ShardId": _FAKE_SHARD_ID, "SequenceNumber": seq_number}
 
     def put_records(
@@ -122,7 +124,9 @@ class KinesisStub:
                 Data=rec["Data"],
                 PartitionKey=rec["PartitionKey"],
             )
-            results.append({"SequenceNumber": resp["SequenceNumber"], "ShardId": _FAKE_SHARD_ID})
+            results.append(
+                {"SequenceNumber": resp["SequenceNumber"], "ShardId": _FAKE_SHARD_ID}
+            )
 
         logger.debug("KinesisStub.put_records: buffered %d records", len(Records))
         return {
@@ -159,7 +163,11 @@ class KinesisStub:
             self._iterators[iterator_id] = 0
         else:
             self._iterators[iterator_id] = len(self._records)
-        logger.debug("KinesisStub.get_shard_iterator: id=%s type=%s", iterator_id, ShardIteratorType)
+        logger.debug(
+            "KinesisStub.get_shard_iterator: id=%s type=%s",
+            iterator_id,
+            ShardIteratorType,
+        )
         return {"ShardIterator": iterator_id}
 
     def get_records(
@@ -184,7 +192,7 @@ class KinesisStub:
         """
         cursor = self._iterators.get(ShardIterator, len(self._records))
         all_records = list(self._records)
-        batch = all_records[cursor: cursor + Limit]
+        batch = all_records[cursor : cursor + Limit]
 
         kinesis_records = [
             {
@@ -202,7 +210,9 @@ class KinesisStub:
         # Clean up old iterator
         self._iterators.pop(ShardIterator, None)
 
-        logger.debug("KinesisStub.get_records: returned %d records", len(kinesis_records))
+        logger.debug(
+            "KinesisStub.get_records: returned %d records", len(kinesis_records)
+        )
         return {
             "Records": kinesis_records,
             "NextShardIterator": new_iterator_id,
@@ -245,7 +255,11 @@ if __name__ == "__main__":
     stub = KinesisStub()
 
     # Quick smoke test
-    stub.put_record(StreamName="pmt-sensor-stream", Data=b'{"device_id":"device-001"}', PartitionKey="device-001")
+    stub.put_record(
+        StreamName="pmt-sensor-stream",
+        Data=b'{"device_id":"device-001"}',
+        PartitionKey="device-001",
+    )
     stub.put_records(
         StreamName="pmt-sensor-stream",
         Records=[

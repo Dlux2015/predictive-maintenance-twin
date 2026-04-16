@@ -104,9 +104,10 @@ class SilverTransformer:
         DataFrame with correct numeric types.
         """
         return (
-            df
-            .withColumn("vibration_rms", F.col("vibration_rms").cast(DoubleType()))
-            .withColumn("temperature_celsius", F.col("temperature_celsius").cast(DoubleType()))
+            df.withColumn("vibration_rms", F.col("vibration_rms").cast(DoubleType()))
+            .withColumn(
+                "temperature_celsius", F.col("temperature_celsius").cast(DoubleType())
+            )
             .withColumn("pressure_bar", F.col("pressure_bar").cast(DoubleType()))
             .withColumn("entry_id", F.col("entry_id").cast(LongType()))
         )
@@ -152,7 +153,10 @@ class SilverTransformer:
         df = df.filter(F.col("device_id").isNotNull())
 
         # Fill null sensor readings with the -1.0 sentinel
-        df = df.fillna(NULL_SENTINEL, subset=["vibration_rms", "temperature_celsius", "pressure_bar"])
+        df = df.fillna(
+            NULL_SENTINEL,
+            subset=["vibration_rms", "temperature_celsius", "pressure_bar"],
+        )
 
         return df
 
@@ -216,7 +220,9 @@ class SilverTransformer:
         df:
             Cleaned and deduplicated DataFrame to upsert.
         """
-        logger.info("Merging %d rows into Silver table: %s", df.count(), self.silver_table)
+        logger.info(
+            "Merging %d rows into Silver table: %s", df.count(), self.silver_table
+        )
 
         # Add silver audit timestamp
         df = df.withColumn("_silver_updated_at", F.current_timestamp())
@@ -227,12 +233,7 @@ class SilverTransformer:
             # First run — create the managed Delta table via a plain write.
             # Unity Catalog manages the storage location; no LOCATION clause needed.
             logger.info("Silver table does not exist — creating via initial write")
-            (
-                df.write
-                .format("delta")
-                .mode("overwrite")
-                .saveAsTable(self.silver_table)
-            )
+            (df.write.format("delta").mode("overwrite").saveAsTable(self.silver_table))
             logger.info("Silver table created: %s", self.silver_table)
         else:
             target = DeltaTable.forName(self.spark, self.silver_table)
@@ -278,7 +279,9 @@ class SilverTransformer:
 
 def main() -> None:
     """Parse arguments and run Silver transformation."""
-    parser = argparse.ArgumentParser(description="Silver transformation: Bronze → Silver Delta")
+    parser = argparse.ArgumentParser(
+        description="Silver transformation: Bronze → Silver Delta"
+    )
     parser.add_argument("--catalog", default=DEFAULT_CATALOG)
     parser.add_argument("--schema", default=DEFAULT_SCHEMA)
     args = parser.parse_args()

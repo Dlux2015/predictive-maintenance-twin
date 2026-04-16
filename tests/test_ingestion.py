@@ -78,9 +78,14 @@ class TestSensorReading:
 
     def test_none_fields_serialise_as_null(self):
         reading = SensorReading(
-            device_id="d1", entry_id=1, recorded_at="t",
-            vibration_rms=None, temperature_celsius=None, pressure_bar=None,
-            source_channel=9, ingested_at="t",
+            device_id="d1",
+            entry_id=1,
+            recorded_at="t",
+            vibration_rms=None,
+            temperature_celsius=None,
+            pressure_bar=None,
+            source_channel=9,
+            ingested_at="t",
         )
         parsed = json.loads(reading.to_json())
         assert parsed["vibration_rms"] is None
@@ -140,7 +145,9 @@ class TestThingSpeakParseResponse:
 
     def test_null_field1_becomes_none(self):
         poller = self._poller()
-        reading = poller._parse_response(self._api_response(field1=None), self._channel())
+        reading = poller._parse_response(
+            self._api_response(field1=None), self._channel()
+        )
         assert reading is not None
         assert reading.vibration_rms is None
 
@@ -152,12 +159,16 @@ class TestThingSpeakParseResponse:
 
     def test_non_numeric_field_becomes_none(self):
         poller = self._poller()
-        reading = poller._parse_response(self._api_response(field3="N/A"), self._channel())
+        reading = poller._parse_response(
+            self._api_response(field3="N/A"), self._channel()
+        )
         assert reading is not None
         assert reading.pressure_bar is None
 
     def test_device_id_from_channel_config(self):
-        channel = ChannelConfig(channel_id=276330, device_id="device-002", name="vib_02")
+        channel = ChannelConfig(
+            channel_id=276330, device_id="device-002", name="vib_02"
+        )
         poller = ThingSpeakPoller(channels=[channel], config={})
         reading = poller._parse_response(self._api_response(), channel)
         assert reading.device_id == "device-002"
@@ -165,7 +176,9 @@ class TestThingSpeakParseResponse:
 
     def test_entry_id_cast_to_int(self):
         poller = self._poller()
-        reading = poller._parse_response(self._api_response(entry_id=99), self._channel())
+        reading = poller._parse_response(
+            self._api_response(entry_id=99), self._channel()
+        )
         assert reading.entry_id == 99
         assert isinstance(reading.entry_id, int)
 
@@ -257,15 +270,21 @@ class TestS3BuildKey:
     def _writer(self) -> S3Writer:
         # Passing a nonsense region — _build_key doesn't call boto3
         import unittest.mock as mock
+
         with mock.patch("boto3.client"):
             return S3Writer(bucket="test-bucket", prefix="raw", region="us-east-1")
 
     def test_key_starts_with_prefix(self):
         writer = self._writer()
         reading = SensorReading(
-            device_id="d1", entry_id=1, recorded_at="t",
-            vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0,
-            source_channel=9, ingested_at="t",
+            device_id="d1",
+            entry_id=1,
+            recorded_at="t",
+            vibration_rms=1.0,
+            temperature_celsius=20.0,
+            pressure_bar=1.0,
+            source_channel=9,
+            ingested_at="t",
         )
         key = writer._build_key(reading)
         assert key.startswith("raw/")
@@ -273,9 +292,14 @@ class TestS3BuildKey:
     def test_key_has_partitioned_structure(self):
         writer = self._writer()
         reading = SensorReading(
-            device_id="d1", entry_id=1, recorded_at="t",
-            vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0,
-            source_channel=9, ingested_at="t",
+            device_id="d1",
+            entry_id=1,
+            recorded_at="t",
+            vibration_rms=1.0,
+            temperature_celsius=20.0,
+            pressure_bar=1.0,
+            source_channel=9,
+            ingested_at="t",
         )
         key = writer._build_key(reading)
         assert "year=" in key
@@ -286,9 +310,14 @@ class TestS3BuildKey:
     def test_key_ends_with_json(self):
         writer = self._writer()
         reading = SensorReading(
-            device_id="d1", entry_id=1, recorded_at="t",
-            vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0,
-            source_channel=9, ingested_at="t",
+            device_id="d1",
+            entry_id=1,
+            recorded_at="t",
+            vibration_rms=1.0,
+            temperature_celsius=20.0,
+            pressure_bar=1.0,
+            source_channel=9,
+            ingested_at="t",
         )
         key = writer._build_key(reading)
         assert key.endswith(".json")
@@ -297,9 +326,14 @@ class TestS3BuildKey:
         """Each call must produce a different UUID-based key."""
         writer = self._writer()
         reading = SensorReading(
-            device_id="d1", entry_id=1, recorded_at="t",
-            vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0,
-            source_channel=9, ingested_at="t",
+            device_id="d1",
+            entry_id=1,
+            recorded_at="t",
+            vibration_rms=1.0,
+            temperature_celsius=20.0,
+            pressure_bar=1.0,
+            source_channel=9,
+            ingested_at="t",
         )
         keys = {writer._build_key(reading) for _ in range(10)}
         assert len(keys) == 10, "Expected unique keys for each call"
@@ -399,10 +433,6 @@ class TestBuildChannels:
         assert len(channels) == 3
 
     def test_name_defaults_to_channel_id_when_missing(self):
-        config = {
-            "thingspeak": {
-                "channels": [{"id": 123, "device_id": "dev-x"}]
-            }
-        }
+        config = {"thingspeak": {"channels": [{"id": 123, "device_id": "dev-x"}]}}
         channels = build_channels(config)
         assert channels[0].name == "channel_123"

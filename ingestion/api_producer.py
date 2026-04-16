@@ -85,12 +85,12 @@ class SensorReading:
 
     device_id: str
     entry_id: int
-    recorded_at: str          # ISO-8601 UTC
+    recorded_at: str  # ISO-8601 UTC
     vibration_rms: Optional[float]
     temperature_celsius: Optional[float]
     pressure_bar: Optional[float]
     source_channel: int
-    ingested_at: str          # ISO-8601 UTC, set at write time
+    ingested_at: str  # ISO-8601 UTC, set at write time
 
     def to_dict(self) -> dict:
         """Return a JSON-serialisable dictionary of this reading."""
@@ -152,7 +152,9 @@ class ThingSpeakPoller:
             f"{self.base_url}/channels/{channel.channel_id}/feeds.json"
             f"?results={self.results_per_poll}"
         )
-        logger.info("Fetching channel %d (%s) from %s", channel.channel_id, channel.name, url)
+        logger.info(
+            "Fetching channel %d (%s) from %s", channel.channel_id, channel.name, url
+        )
         try:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
@@ -162,7 +164,9 @@ class ThingSpeakPoller:
             logger.error("HTTP error fetching channel %d: %s", channel.channel_id, exc)
             raise
         except requests.RequestException as exc:
-            logger.error("Network error fetching channel %d: %s", channel.channel_id, exc)
+            logger.error(
+                "Network error fetching channel %d: %s", channel.channel_id, exc
+            )
             raise
 
     def _parse_response(
@@ -280,7 +284,12 @@ class S3Writer:
         body = reading.to_json().encode("utf-8")
 
         if dry_run:
-            logger.info("[DRY-RUN] Would write s3://%s/%s (%d bytes)", self.bucket, key, len(body))
+            logger.info(
+                "[DRY-RUN] Would write s3://%s/%s (%d bytes)",
+                self.bucket,
+                key,
+                len(body),
+            )
             return key
 
         try:
@@ -294,7 +303,10 @@ class S3Writer:
             return key
         except ClientError as exc:
             logger.error(
-                "Failed to write s3://%s/%s: %s", self.bucket, key, exc.response["Error"]["Message"]
+                "Failed to write s3://%s/%s: %s",
+                self.bucket,
+                key,
+                exc.response["Error"]["Message"],
             )
             raise
 
@@ -344,7 +356,9 @@ class KinesisProducer:
             If True, log the intended put but skip the actual API call.
         """
         if not self._enabled:
-            logger.debug("Kinesis disabled — skipping put_record for %s", reading.device_id)
+            logger.debug(
+                "Kinesis disabled — skipping put_record for %s", reading.device_id
+            )
             return
 
         if dry_run:
@@ -575,9 +589,15 @@ def build_channels(config: dict) -> list[ChannelConfig]:
     if not raw:
         logger.warning("No channels in config — using built-in defaults")
         return [
-            ChannelConfig(channel_id=9, device_id="device-001", name="temperature_sensor_01"),
-            ChannelConfig(channel_id=276330, device_id="device-002", name="vibration_sensor_01"),
-            ChannelConfig(channel_id=9, device_id="device-003", name="pressure_sensor_01"),
+            ChannelConfig(
+                channel_id=9, device_id="device-001", name="temperature_sensor_01"
+            ),
+            ChannelConfig(
+                channel_id=276330, device_id="device-002", name="vibration_sensor_01"
+            ),
+            ChannelConfig(
+                channel_id=9, device_id="device-003", name="pressure_sensor_01"
+            ),
         ]
     return [
         ChannelConfig(
@@ -645,13 +665,17 @@ def main() -> None:
             "DBFS_RAW_PATH", "/Volumes/workspace/predictive_maintenance/raw"
         )
         if not db_host and not args.dry_run:
-            logger.error("DATABRICKS_HOST is not set. Use --dry-run or set the env var.")
+            logger.error(
+                "DATABRICKS_HOST is not set. Use --dry-run or set the env var."
+            )
             sys.exit(1)
         writer: DBFSWriter | S3Writer = DBFSWriter(
             volume_path=volume_path, host=db_host, token=db_token
         )
         logger.info(
-            "Backend: Databricks Volumes | host=%s | path=%s", db_host or "<dry-run>", volume_path
+            "Backend: Databricks Volumes | host=%s | path=%s",
+            db_host or "<dry-run>",
+            volume_path,
         )
     else:
         region = os.environ.get("AWS_REGION", "us-east-1")
@@ -662,7 +686,10 @@ def main() -> None:
         kinesis_producer = KinesisProducer(stream_name=kinesis_stream, region=region)
         cw_reporter = CloudWatchReporter(region=region)
         logger.info(
-            "Backend: AWS | bucket=%s | kinesis=%s | region=%s", bucket, kinesis_stream, region
+            "Backend: AWS | bucket=%s | kinesis=%s | region=%s",
+            bucket,
+            kinesis_stream,
+            region,
         )
 
     logger.info(

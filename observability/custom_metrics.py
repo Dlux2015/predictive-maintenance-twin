@@ -107,13 +107,17 @@ class MetricPublisher:
         timestamp:
             Metric timestamp (defaults to now in UTC).
         """
-        self.publish_batch([{
-            "MetricName": metric_name,
-            "Value": value,
-            "Unit": unit,
-            "Dimensions": dimensions or [],
-            "Timestamp": timestamp or datetime.now(timezone.utc),
-        }])
+        self.publish_batch(
+            [
+                {
+                    "MetricName": metric_name,
+                    "Value": value,
+                    "Unit": unit,
+                    "Dimensions": dimensions or [],
+                    "Timestamp": timestamp or datetime.now(timezone.utc),
+                }
+            ]
+        )
 
     def publish_batch(self, metrics: list[dict]) -> None:
         """
@@ -125,7 +129,7 @@ class MetricPublisher:
             List of metric dicts compatible with CloudWatch MetricData format.
         """
         for i in range(0, len(metrics), _CW_BATCH_LIMIT):
-            batch = metrics[i: i + _CW_BATCH_LIMIT]
+            batch = metrics[i : i + _CW_BATCH_LIMIT]
 
             if self.dry_run:
                 for m in batch:
@@ -142,9 +146,16 @@ class MetricPublisher:
                     Namespace=self.namespace,
                     MetricData=batch,
                 )
-                logger.info("Published %d metrics to CloudWatch (batch %d)", len(batch), i // _CW_BATCH_LIMIT + 1)
+                logger.info(
+                    "Published %d metrics to CloudWatch (batch %d)",
+                    len(batch),
+                    i // _CW_BATCH_LIMIT + 1,
+                )
             except ClientError as exc:
-                logger.error("Failed to publish metrics batch: %s", exc.response["Error"]["Message"])
+                logger.error(
+                    "Failed to publish metrics batch: %s",
+                    exc.response["Error"]["Message"],
+                )
 
     def collect_table_metrics(self, connection: Any) -> list[dict]:
         """
@@ -173,13 +184,15 @@ class MetricPublisher:
             try:
                 result = self._execute_query(connection, query)
                 value = float(result[0][0]) if result else 0.0
-                metrics.append({
-                    "MetricName": metric_name,
-                    "Value": value,
-                    "Unit": "Count",
-                    "Dimensions": [],
-                    "Timestamp": now,
-                })
+                metrics.append(
+                    {
+                        "MetricName": metric_name,
+                        "Value": value,
+                        "Unit": "Count",
+                        "Dimensions": [],
+                        "Timestamp": now,
+                    }
+                )
                 logger.info("%s = %.0f", metric_name, value)
             except Exception as exc:
                 logger.error("Failed to collect %s: %s", metric_name, exc)
@@ -190,16 +203,18 @@ class MetricPublisher:
                 connection,
                 f"""SELECT COUNT(DISTINCT device_id)
                     FROM {DEFAULT_CATALOG}.{DEFAULT_SCHEMA}.gold_sensors_daily
-                    WHERE is_at_risk = TRUE AND date = CURRENT_DATE()"""
+                    WHERE is_at_risk = TRUE AND date = CURRENT_DATE()""",
             )
             at_risk = float(result[0][0]) if result else 0.0
-            metrics.append({
-                "MetricName": "AtRiskDeviceCount",
-                "Value": at_risk,
-                "Unit": "Count",
-                "Dimensions": [],
-                "Timestamp": now,
-            })
+            metrics.append(
+                {
+                    "MetricName": "AtRiskDeviceCount",
+                    "Value": at_risk,
+                    "Unit": "Count",
+                    "Dimensions": [],
+                    "Timestamp": now,
+                }
+            )
             logger.info("AtRiskDeviceCount = %.0f", at_risk)
         except Exception as exc:
             logger.error("Failed to collect AtRiskDeviceCount: %s", exc)
@@ -210,16 +225,18 @@ class MetricPublisher:
                 connection,
                 f"""SELECT MAX(vibration_zscore)
                     FROM {DEFAULT_CATALOG}.{DEFAULT_SCHEMA}.gold_sensors_daily
-                    WHERE date = CURRENT_DATE()"""
+                    WHERE date = CURRENT_DATE()""",
             )
             max_z = float(result[0][0]) if result and result[0][0] is not None else 0.0
-            metrics.append({
-                "MetricName": "MaxVibrationZScore",
-                "Value": max_z,
-                "Unit": "None",
-                "Dimensions": [],
-                "Timestamp": now,
-            })
+            metrics.append(
+                {
+                    "MetricName": "MaxVibrationZScore",
+                    "Value": max_z,
+                    "Unit": "None",
+                    "Dimensions": [],
+                    "Timestamp": now,
+                }
+            )
             logger.info("MaxVibrationZScore = %.3f", max_z)
         except Exception as exc:
             logger.error("Failed to collect MaxVibrationZScore: %s", exc)
@@ -264,7 +281,7 @@ class MetricPublisher:
             result = self._execute_query(
                 connection,
                 f"""SELECT UNIX_TIMESTAMP(MAX(CAST(date AS TIMESTAMP)))
-                    FROM {DEFAULT_CATALOG}.{DEFAULT_SCHEMA}.gold_sensors_daily"""
+                    FROM {DEFAULT_CATALOG}.{DEFAULT_SCHEMA}.gold_sensors_daily""",
             )
             epoch = float(result[0][0]) if result and result[0][0] is not None else 0.0
             self.publish(
@@ -314,36 +331,52 @@ class MetricPublisher:
         metrics = self.collect_table_metrics(connection)
         self.publish_batch(metrics)
         self.collect_freshness_metrics(connection)
-        logger.info("All pipeline metrics published to CloudWatch namespace: %s", self.namespace)
+        logger.info(
+            "All pipeline metrics published to CloudWatch namespace: %s", self.namespace
+        )
 
 
 def _get_databricks_connection(hostname: str, http_path: str, token: str):
     """Create a Databricks SQL connector connection."""
     try:
         from databricks import sql
+
         return sql.connect(
             server_hostname=hostname,
             http_path=http_path,
             access_token=token,
         )
     except ImportError:
-        logger.error("databricks-sql-connector not installed. Run: pip install databricks-sql-connector")
+        logger.error(
+            "databricks-sql-connector not installed. Run: pip install databricks-sql-connector"
+        )
         raise
 
 
 def main() -> None:
     """Parse arguments and run the metric publisher."""
-    parser = argparse.ArgumentParser(description="Publish custom pipeline metrics to CloudWatch")
-    parser.add_argument("--dry-run", action="store_true",
-                        default=os.environ.get("DRY_RUN", "").lower() == "true")
-    parser.add_argument("--region", default=os.environ.get("AWS_REGION", DEFAULT_REGION))
+    parser = argparse.ArgumentParser(
+        description="Publish custom pipeline metrics to CloudWatch"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=os.environ.get("DRY_RUN", "").lower() == "true",
+    )
+    parser.add_argument(
+        "--region", default=os.environ.get("AWS_REGION", DEFAULT_REGION)
+    )
     parser.add_argument("--namespace", default=DEFAULT_NAMESPACE)
-    parser.add_argument("--databricks-server-hostname",
-                        default=os.environ.get("DATABRICKS_SERVER_HOSTNAME", ""))
-    parser.add_argument("--databricks-http-path",
-                        default=os.environ.get("DATABRICKS_HTTP_PATH", ""))
-    parser.add_argument("--databricks-token",
-                        default=os.environ.get("DATABRICKS_TOKEN", ""))
+    parser.add_argument(
+        "--databricks-server-hostname",
+        default=os.environ.get("DATABRICKS_SERVER_HOSTNAME", ""),
+    )
+    parser.add_argument(
+        "--databricks-http-path", default=os.environ.get("DATABRICKS_HTTP_PATH", "")
+    )
+    parser.add_argument(
+        "--databricks-token", default=os.environ.get("DATABRICKS_TOKEN", "")
+    )
     args = parser.parse_args()
 
     publisher = MetricPublisher(
@@ -356,6 +389,7 @@ def main() -> None:
     connection = None
     try:
         from pyspark.sql import SparkSession
+
         spark = SparkSession.getActiveSession()
         if spark is not None:
             logger.info("Using active SparkSession for metric queries")
@@ -365,7 +399,11 @@ def main() -> None:
 
     # Fall back to Databricks SQL connector
     if connection is None:
-        if not (args.databricks_server_hostname and args.databricks_http_path and args.databricks_token):
+        if not (
+            args.databricks_server_hostname
+            and args.databricks_http_path
+            and args.databricks_token
+        ):
             logger.error(
                 "No SparkSession available and DATABRICKS_SERVER_HOSTNAME / "
                 "DATABRICKS_HTTP_PATH / DATABRICKS_TOKEN not set. Cannot query tables."

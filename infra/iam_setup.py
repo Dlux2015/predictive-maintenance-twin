@@ -27,7 +27,12 @@ import os
 
 import boto3
 from botocore.exceptions import ClientError
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -85,9 +90,7 @@ class IAMSetup:
         wait=wait_exponential(multiplier=1, min=1, max=32),
         reraise=True,
     )
-    def _create_role(
-        self, role_name: str, trust_policy: dict, description: str
-    ) -> str:
+    def _create_role(self, role_name: str, trust_policy: dict, description: str) -> str:
         """
         Create an IAM role if it does not already exist.
 
@@ -112,7 +115,9 @@ class IAMSetup:
         if self._role_exists(role_name):
             role = self._iam.get_role(RoleName=role_name)
             arn = role["Role"]["Arn"]
-            logger.info("IAM role '%s' already exists — skipping create: %s", role_name, arn)
+            logger.info(
+                "IAM role '%s' already exists — skipping create: %s", role_name, arn
+            )
             return arn
 
         try:
@@ -126,13 +131,23 @@ class IAMSetup:
             logger.info("Created IAM role: %s", arn)
             return arn
         except ClientError as exc:
-            logger.error("Failed to create role '%s': %s", role_name, exc.response["Error"]["Message"])
+            logger.error(
+                "Failed to create role '%s': %s",
+                role_name,
+                exc.response["Error"]["Message"],
+            )
             raise
 
-    def _put_inline_policy(self, role_name: str, policy_name: str, policy_doc: dict) -> None:
+    def _put_inline_policy(
+        self, role_name: str, policy_name: str, policy_doc: dict
+    ) -> None:
         """Attach an inline policy to an IAM role (idempotent)."""
         if self.dry_run:
-            logger.info("[DRY-RUN] Would attach inline policy '%s' to role '%s'", policy_name, role_name)
+            logger.info(
+                "[DRY-RUN] Would attach inline policy '%s' to role '%s'",
+                policy_name,
+                role_name,
+            )
             return
         try:
             self._iam.put_role_policy(
@@ -140,9 +155,15 @@ class IAMSetup:
                 PolicyName=policy_name,
                 PolicyDocument=json.dumps(policy_doc),
             )
-            logger.info("Attached inline policy '%s' to role '%s'", policy_name, role_name)
+            logger.info(
+                "Attached inline policy '%s' to role '%s'", policy_name, role_name
+            )
         except ClientError as exc:
-            logger.error("Failed to attach policy '%s': %s", policy_name, exc.response["Error"]["Message"])
+            logger.error(
+                "Failed to attach policy '%s': %s",
+                policy_name,
+                exc.response["Error"]["Message"],
+            )
             raise
 
     def attach_policy(self, role_name: str, policy_arn: str) -> None:
@@ -157,7 +178,9 @@ class IAMSetup:
             ARN of the managed policy to attach.
         """
         if self.dry_run:
-            logger.info("[DRY-RUN] Would attach managed policy %s to %s", policy_arn, role_name)
+            logger.info(
+                "[DRY-RUN] Would attach managed policy %s to %s", policy_arn, role_name
+            )
             return
         try:
             self._iam.attach_role_policy(RoleName=role_name, PolicyArn=policy_arn)
@@ -166,7 +189,9 @@ class IAMSetup:
             if exc.response["Error"]["Code"] == "EntityAlreadyExists":
                 logger.info("Policy %s already attached to %s", policy_arn, role_name)
             else:
-                logger.error("Failed to attach policy: %s", exc.response["Error"]["Message"])
+                logger.error(
+                    "Failed to attach policy: %s", exc.response["Error"]["Message"]
+                )
                 raise
 
     # ------------------------------------------------------------------
@@ -189,7 +214,9 @@ class IAMSetup:
             "Statement": [
                 {
                     "Effect": "Allow",
-                    "Principal": {"Service": ["ec2.amazonaws.com", "lambda.amazonaws.com"]},
+                    "Principal": {
+                        "Service": ["ec2.amazonaws.com", "lambda.amazonaws.com"]
+                    },
                     "Action": "sts:AssumeRole",
                 }
             ],
@@ -212,7 +239,11 @@ class IAMSetup:
                 {
                     "Sid": "KinesisPut",
                     "Effect": "Allow",
-                    "Action": ["kinesis:PutRecord", "kinesis:PutRecords", "kinesis:DescribeStream"],
+                    "Action": [
+                        "kinesis:PutRecord",
+                        "kinesis:PutRecords",
+                        "kinesis:DescribeStream",
+                    ],
                     "Resource": f"arn:aws:kinesis:{self.region}:{self._account_id}:stream/pmt-*",
                 },
                 {
@@ -242,9 +273,7 @@ class IAMSetup:
             "Statement": [
                 {
                     "Effect": "Allow",
-                    "Principal": {
-                        "AWS": f"arn:aws:iam::{self._account_id}:root"
-                    },
+                    "Principal": {"AWS": f"arn:aws:iam::{self._account_id}:root"},
                     "Action": "sts:AssumeRole",
                     "Condition": {
                         "StringEquals": {"sts:ExternalId": "databricks-unity-catalog"}
@@ -265,8 +294,11 @@ class IAMSetup:
                     "Sid": "S3FullAccess",
                     "Effect": "Allow",
                     "Action": [
-                        "s3:GetObject", "s3:PutObject", "s3:DeleteObject",
-                        "s3:ListBucket", "s3:GetBucketLocation",
+                        "s3:GetObject",
+                        "s3:PutObject",
+                        "s3:DeleteObject",
+                        "s3:ListBucket",
+                        "s3:GetBucketLocation",
                     ],
                     "Resource": [
                         f"arn:aws:s3:::{self.bucket}",
@@ -315,8 +347,11 @@ class IAMSetup:
                     "Sid": "S3Delivery",
                     "Effect": "Allow",
                     "Action": [
-                        "s3:PutObject", "s3:GetObject", "s3:ListBucket",
-                        "s3:AbortMultipartUpload", "s3:ListBucketMultipartUploads",
+                        "s3:PutObject",
+                        "s3:GetObject",
+                        "s3:ListBucket",
+                        "s3:AbortMultipartUpload",
+                        "s3:ListBucketMultipartUploads",
                     ],
                     "Resource": [
                         f"arn:aws:s3:::{self.bucket}",
@@ -326,7 +361,12 @@ class IAMSetup:
                 {
                     "Sid": "KinesisSource",
                     "Effect": "Allow",
-                    "Action": ["kinesis:GetRecords", "kinesis:GetShardIterator", "kinesis:DescribeStream", "kinesis:ListShards"],
+                    "Action": [
+                        "kinesis:GetRecords",
+                        "kinesis:GetShardIterator",
+                        "kinesis:DescribeStream",
+                        "kinesis:ListShards",
+                    ],
                     "Resource": f"arn:aws:kinesis:{self.region}:{self._account_id}:stream/pmt-*",
                 },
             ],
@@ -354,11 +394,21 @@ class IAMSetup:
 
 def main() -> None:
     """Parse arguments and run IAM setup."""
-    parser = argparse.ArgumentParser(description="Set up IAM roles for predictive maintenance pipeline")
+    parser = argparse.ArgumentParser(
+        description="Set up IAM roles for predictive maintenance pipeline"
+    )
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--output-arns", action="store_true", help="Print all role ARNs as JSON on completion")
-    parser.add_argument("--region", default=os.environ.get("AWS_REGION", DEFAULT_REGION))
-    parser.add_argument("--bucket", default=os.environ.get("PMT_S3_BUCKET", DEFAULT_BUCKET))
+    parser.add_argument(
+        "--output-arns",
+        action="store_true",
+        help="Print all role ARNs as JSON on completion",
+    )
+    parser.add_argument(
+        "--region", default=os.environ.get("AWS_REGION", DEFAULT_REGION)
+    )
+    parser.add_argument(
+        "--bucket", default=os.environ.get("PMT_S3_BUCKET", DEFAULT_BUCKET)
+    )
     args = parser.parse_args()
 
     setup = IAMSetup(region=args.region, bucket=args.bucket, dry_run=args.dry_run)

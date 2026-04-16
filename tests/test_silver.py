@@ -35,7 +35,9 @@ def _bronze_schema() -> StructType:
     return StructType(
         [
             StructField("device_id", StringType(), nullable=True),
-            StructField("entry_id", StringType(), nullable=True),   # Bronze stores as String
+            StructField(
+                "entry_id", StringType(), nullable=True
+            ),  # Bronze stores as String
             StructField("recorded_at", StringType(), nullable=True),
             StructField("vibration_rms", StringType(), nullable=True),
             StructField("temperature_celsius", StringType(), nullable=True),
@@ -68,10 +70,17 @@ class TestCastMetrics:
         schema = _bronze_schema()
         rows = [
             Row(
-                device_id="d1", entry_id="42", recorded_at="2024-01-01T00:00:00Z",
-                vibration_rms="3.14", temperature_celsius="22.5", pressure_bar="1.01",
-                source_channel="9", ingested_at="2024-01-01T00:00:01Z",
-                _ingested_at=None, _source_file="file.json", _batch_id="b1",
+                device_id="d1",
+                entry_id="42",
+                recorded_at="2024-01-01T00:00:00Z",
+                vibration_rms="3.14",
+                temperature_celsius="22.5",
+                pressure_bar="1.01",
+                source_channel="9",
+                ingested_at="2024-01-01T00:00:01Z",
+                _ingested_at=None,
+                _source_file="file.json",
+                _batch_id="b1",
             )
         ]
         df = spark.createDataFrame(rows, schema=schema)
@@ -92,10 +101,17 @@ class TestCastMetrics:
         schema = _bronze_schema()
         rows = [
             Row(
-                device_id="d1", entry_id="100", recorded_at="t",
-                vibration_rms="5.55", temperature_celsius="30.0", pressure_bar="2.22",
-                source_channel="9", ingested_at="t",
-                _ingested_at=None, _source_file="f", _batch_id="b",
+                device_id="d1",
+                entry_id="100",
+                recorded_at="t",
+                vibration_rms="5.55",
+                temperature_celsius="30.0",
+                pressure_bar="2.22",
+                source_channel="9",
+                ingested_at="t",
+                _ingested_at=None,
+                _source_file="f",
+                _batch_id="b",
             )
         ]
         df = spark.createDataFrame(rows, schema=schema)
@@ -108,10 +124,17 @@ class TestCastMetrics:
         schema = _bronze_schema()
         rows = [
             Row(
-                device_id="d1", entry_id="1", recorded_at="t",
-                vibration_rms=None, temperature_celsius=None, pressure_bar=None,
-                source_channel="9", ingested_at="t",
-                _ingested_at=None, _source_file="f", _batch_id="b",
+                device_id="d1",
+                entry_id="1",
+                recorded_at="t",
+                vibration_rms=None,
+                temperature_celsius=None,
+                pressure_bar=None,
+                source_channel="9",
+                ingested_at="t",
+                _ingested_at=None,
+                _source_file="f",
+                _batch_id="b",
             )
         ]
         df = spark.createDataFrame(rows, schema=schema)
@@ -144,9 +167,15 @@ class TestParseTimestamps:
     def test_recorded_at_becomes_timestamp(self, spark):
         schema = self._typed_schema()
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="2024-01-15T14:30:00Z",
-                vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0,
-                _ingested_at=None)
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="2024-01-15T14:30:00Z",
+                vibration_rms=1.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+                _ingested_at=None,
+            )
         ]
         df = spark.createDataFrame(rows, schema=schema)
         result = _make_transformer(spark).parse_timestamps(df)
@@ -156,9 +185,15 @@ class TestParseTimestamps:
     def test_iso8601_parsed_correctly(self, spark):
         schema = self._typed_schema()
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="2024-06-01T12:00:00Z",
-                vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0,
-                _ingested_at=None)
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="2024-06-01T12:00:00Z",
+                vibration_rms=1.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+                _ingested_at=None,
+            )
         ]
         df = spark.createDataFrame(rows, schema=schema)
         result = _make_transformer(spark).parse_timestamps(df).collect()[0]
@@ -192,12 +227,24 @@ class TestHandleNulls:
     def test_rows_with_null_device_id_dropped(self, spark):
         schema = self._clean_schema()
         rows = [
-            Row(device_id=None, entry_id=1, recorded_at="t",
-                vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0,
-                _ingested_at=None),
-            Row(device_id="d1", entry_id=2, recorded_at="t",
-                vibration_rms=2.0, temperature_celsius=21.0, pressure_bar=1.1,
-                _ingested_at=None),
+            Row(
+                device_id=None,
+                entry_id=1,
+                recorded_at="t",
+                vibration_rms=1.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+                _ingested_at=None,
+            ),
+            Row(
+                device_id="d1",
+                entry_id=2,
+                recorded_at="t",
+                vibration_rms=2.0,
+                temperature_celsius=21.0,
+                pressure_bar=1.1,
+                _ingested_at=None,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
         result = _make_transformer(spark).handle_nulls(df)
@@ -207,9 +254,15 @@ class TestHandleNulls:
     def test_null_metrics_filled_with_sentinel(self, spark):
         schema = self._clean_schema()
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="t",
-                vibration_rms=None, temperature_celsius=None, pressure_bar=None,
-                _ingested_at=None),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="t",
+                vibration_rms=None,
+                temperature_celsius=None,
+                pressure_bar=None,
+                _ingested_at=None,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
         result = _make_transformer(spark).handle_nulls(df).collect()[0]
@@ -220,9 +273,15 @@ class TestHandleNulls:
     def test_non_null_metrics_unchanged(self, spark):
         schema = self._clean_schema()
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="t",
-                vibration_rms=5.5, temperature_celsius=25.0, pressure_bar=1.2,
-                _ingested_at=None),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="t",
+                vibration_rms=5.5,
+                temperature_celsius=25.0,
+                pressure_bar=1.2,
+                _ingested_at=None,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
         result = _make_transformer(spark).handle_nulls(df).collect()[0]
@@ -233,9 +292,15 @@ class TestHandleNulls:
     def test_empty_dataframe_after_all_null_device_ids(self, spark):
         schema = self._clean_schema()
         rows = [
-            Row(device_id=None, entry_id=i, recorded_at="t",
-                vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0,
-                _ingested_at=None)
+            Row(
+                device_id=None,
+                entry_id=i,
+                recorded_at="t",
+                vibration_rms=1.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+                _ingested_at=None,
+            )
             for i in range(5)
         ]
         df = spark.createDataFrame(rows, schema=schema)
@@ -267,12 +332,24 @@ class TestDeduplicate:
         ts1 = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         ts2 = datetime(2024, 1, 1, 0, 1, 0, tzinfo=timezone.utc)
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="t",
-                vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0,
-                _ingested_at=ts1),
-            Row(device_id="d1", entry_id=2, recorded_at="t",
-                vibration_rms=2.0, temperature_celsius=21.0, pressure_bar=1.1,
-                _ingested_at=ts2),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="t",
+                vibration_rms=1.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+                _ingested_at=ts1,
+            ),
+            Row(
+                device_id="d1",
+                entry_id=2,
+                recorded_at="t",
+                vibration_rms=2.0,
+                temperature_celsius=21.0,
+                pressure_bar=1.1,
+                _ingested_at=ts2,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
         result = _make_transformer(spark).deduplicate(df)
@@ -283,12 +360,24 @@ class TestDeduplicate:
         older = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         newer = datetime(2024, 1, 1, 0, 5, 0, tzinfo=timezone.utc)
         rows = [
-            Row(device_id="d1", entry_id=42, recorded_at="t",
-                vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0,
-                _ingested_at=older),
-            Row(device_id="d1", entry_id=42, recorded_at="t",
-                vibration_rms=9.9, temperature_celsius=99.0, pressure_bar=9.9,
-                _ingested_at=newer),
+            Row(
+                device_id="d1",
+                entry_id=42,
+                recorded_at="t",
+                vibration_rms=1.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+                _ingested_at=older,
+            ),
+            Row(
+                device_id="d1",
+                entry_id=42,
+                recorded_at="t",
+                vibration_rms=9.9,
+                temperature_celsius=99.0,
+                pressure_bar=9.9,
+                _ingested_at=newer,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
         result = _make_transformer(spark).deduplicate(df)
@@ -303,13 +392,34 @@ class TestDeduplicate:
         ts_new = datetime(2024, 1, 1, 1, 0, 0, tzinfo=timezone.utc)
         rows = [
             # device d1: entry 1 duplicated
-            Row(device_id="d1", entry_id=1, recorded_at="t", vibration_rms=1.0,
-                temperature_celsius=20.0, pressure_bar=1.0, _ingested_at=ts),
-            Row(device_id="d1", entry_id=1, recorded_at="t", vibration_rms=7.0,
-                temperature_celsius=20.0, pressure_bar=1.0, _ingested_at=ts_new),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="t",
+                vibration_rms=1.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+                _ingested_at=ts,
+            ),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="t",
+                vibration_rms=7.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+                _ingested_at=ts_new,
+            ),
             # device d2: unique
-            Row(device_id="d2", entry_id=1, recorded_at="t", vibration_rms=2.0,
-                temperature_celsius=21.0, pressure_bar=1.1, _ingested_at=ts),
+            Row(
+                device_id="d2",
+                entry_id=1,
+                recorded_at="t",
+                vibration_rms=2.0,
+                temperature_celsius=21.0,
+                pressure_bar=1.1,
+                _ingested_at=ts,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
         result = _make_transformer(spark).deduplicate(df)

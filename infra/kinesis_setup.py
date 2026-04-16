@@ -24,7 +24,12 @@ import time
 
 import boto3
 from botocore.exceptions import ClientError
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -76,18 +81,30 @@ class KinesisSetup:
             Number of shards (each shard handles ~1 MB/s ingestion).
         """
         if self.dry_run:
-            logger.info("[DRY-RUN] Would create Kinesis stream '%s' with %d shard(s)", stream_name, shard_count)
+            logger.info(
+                "[DRY-RUN] Would create Kinesis stream '%s' with %d shard(s)",
+                stream_name,
+                shard_count,
+            )
             return
 
         try:
             self._kinesis.create_stream(StreamName=stream_name, ShardCount=shard_count)
-            logger.info("Created Kinesis stream '%s' with %d shard(s)", stream_name, shard_count)
+            logger.info(
+                "Created Kinesis stream '%s' with %d shard(s)", stream_name, shard_count
+            )
         except ClientError as exc:
             code = exc.response["Error"]["Code"]
             if code == "ResourceInUseException":
-                logger.info("Kinesis stream '%s' already exists — skipping create", stream_name)
+                logger.info(
+                    "Kinesis stream '%s' already exists — skipping create", stream_name
+                )
             else:
-                logger.error("Failed to create stream '%s': %s", stream_name, exc.response["Error"]["Message"])
+                logger.error(
+                    "Failed to create stream '%s': %s",
+                    stream_name,
+                    exc.response["Error"]["Message"],
+                )
                 raise
 
     def wait_for_stream_active(
@@ -104,7 +121,9 @@ class KinesisSetup:
             Maximum seconds to wait before raising TimeoutError.
         """
         if self.dry_run:
-            logger.info("[DRY-RUN] Would wait for stream '%s' to become ACTIVE", stream_name)
+            logger.info(
+                "[DRY-RUN] Would wait for stream '%s' to become ACTIVE", stream_name
+            )
             return
 
         logger.info("Waiting for stream '%s' to become ACTIVE...", stream_name)
@@ -118,9 +137,14 @@ class KinesisSetup:
                     return
                 logger.debug("Stream status: %s — waiting...", status)
             except ClientError as exc:
-                logger.warning("describe_stream_summary failed: %s", exc.response["Error"]["Message"])
+                logger.warning(
+                    "describe_stream_summary failed: %s",
+                    exc.response["Error"]["Message"],
+                )
             time.sleep(5)
-        raise TimeoutError(f"Stream '{stream_name}' did not become ACTIVE within {timeout}s")
+        raise TimeoutError(
+            f"Stream '{stream_name}' did not become ACTIVE within {timeout}s"
+        )
 
     @retry(
         retry=retry_if_exception_type(ClientError),
@@ -155,7 +179,12 @@ class KinesisSetup:
         firehose_name = stream_name.replace("stream", "firehose")
 
         if self.dry_run:
-            logger.info("[DRY-RUN] Would create Firehose '%s' → s3://%s/%s", firehose_name, s3_bucket, s3_prefix)
+            logger.info(
+                "[DRY-RUN] Would create Firehose '%s' → s3://%s/%s",
+                firehose_name,
+                s3_bucket,
+                s3_prefix,
+            )
             return
 
         try:
@@ -179,25 +208,44 @@ class KinesisSetup:
         except ClientError as exc:
             code = exc.response["Error"]["Code"]
             if code == "ResourceInUseException":
-                logger.info("Firehose '%s' already exists — skipping create", firehose_name)
+                logger.info(
+                    "Firehose '%s' already exists — skipping create", firehose_name
+                )
             else:
-                logger.error("Failed to create Firehose '%s': %s", firehose_name, exc.response["Error"]["Message"])
+                logger.error(
+                    "Failed to create Firehose '%s': %s",
+                    firehose_name,
+                    exc.response["Error"]["Message"],
+                )
                 raise
 
 
 def main() -> None:
     """Parse arguments and set up Kinesis resources."""
-    parser = argparse.ArgumentParser(description="Set up Kinesis stream + Firehose for predictive maintenance")
+    parser = argparse.ArgumentParser(
+        description="Set up Kinesis stream + Firehose for predictive maintenance"
+    )
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--stream-name", default=os.environ.get("KINESIS_STREAM", DEFAULT_STREAM))
+    parser.add_argument(
+        "--stream-name", default=os.environ.get("KINESIS_STREAM", DEFAULT_STREAM)
+    )
     parser.add_argument("--shard-count", type=int, default=DEFAULT_SHARDS)
-    parser.add_argument("--s3-bucket", default=os.environ.get("PMT_S3_BUCKET", "predictive-maintenance-twin-raw"))
-    parser.add_argument("--iam-role-arn", default=os.environ.get("PMT_FIREHOSE_ROLE", ""))
-    parser.add_argument("--region", default=os.environ.get("AWS_REGION", DEFAULT_REGION))
+    parser.add_argument(
+        "--s3-bucket",
+        default=os.environ.get("PMT_S3_BUCKET", "predictive-maintenance-twin-raw"),
+    )
+    parser.add_argument(
+        "--iam-role-arn", default=os.environ.get("PMT_FIREHOSE_ROLE", "")
+    )
+    parser.add_argument(
+        "--region", default=os.environ.get("AWS_REGION", DEFAULT_REGION)
+    )
     args = parser.parse_args()
 
     setup = KinesisSetup(region=args.region, dry_run=args.dry_run)
-    setup.create_kinesis_stream(stream_name=args.stream_name, shard_count=args.shard_count)
+    setup.create_kinesis_stream(
+        stream_name=args.stream_name, shard_count=args.shard_count
+    )
     setup.wait_for_stream_active(stream_name=args.stream_name)
 
     if args.iam_role_arn:

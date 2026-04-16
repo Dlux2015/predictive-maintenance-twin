@@ -23,6 +23,7 @@ os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
 
 # Suppress py4j / log4j noise
 import logging
+
 logging.getLogger("py4j").setLevel(logging.ERROR)
 logging.getLogger("pyspark").setLevel(logging.ERROR)
 
@@ -31,7 +32,9 @@ logging.getLogger("pyspark").setLevel(logging.ERROR)
 # SparkSession fixture
 # ---------------------------------------------------------------------------
 
-pyspark = pytest.importorskip("pyspark", reason="PySpark not installed — skipping Spark tests")
+pyspark = pytest.importorskip(
+    "pyspark", reason="PySpark not installed — skipping Spark tests"
+)
 
 
 @pytest.fixture(scope="session")

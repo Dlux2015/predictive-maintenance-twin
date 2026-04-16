@@ -72,9 +72,14 @@ class TestSentinelReplacement:
     def test_sentinel_replaced_with_null(self, spark):
         schema = _silver_schema()
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at=_ts(2024, 1, 1),
-                vibration_rms=NULL_SENTINEL, temperature_celsius=NULL_SENTINEL,
-                pressure_bar=NULL_SENTINEL),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at=_ts(2024, 1, 1),
+                vibration_rms=NULL_SENTINEL,
+                temperature_celsius=NULL_SENTINEL,
+                pressure_bar=NULL_SENTINEL,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
 
@@ -93,8 +98,14 @@ class TestSentinelReplacement:
     def test_real_values_not_replaced(self, spark):
         schema = _silver_schema()
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at=_ts(2024, 1, 1),
-                vibration_rms=5.5, temperature_celsius=25.0, pressure_bar=1.2),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at=_ts(2024, 1, 1),
+                vibration_rms=5.5,
+                temperature_celsius=25.0,
+                pressure_bar=1.2,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
         for col in ("vibration_rms", "temperature_celsius", "pressure_bar"):
@@ -118,13 +129,31 @@ class TestComputeHourly:
         schema = _silver_schema()
         rows = [
             # device d1: 2 readings in the same hour
-            Row(device_id="d1", entry_id=1, recorded_at=_ts(2024, 1, 1, 10),
-                vibration_rms=2.0, temperature_celsius=20.0, pressure_bar=1.0),
-            Row(device_id="d1", entry_id=2, recorded_at=_ts(2024, 1, 1, 10),
-                vibration_rms=4.0, temperature_celsius=24.0, pressure_bar=1.4),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at=_ts(2024, 1, 1, 10),
+                vibration_rms=2.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+            ),
+            Row(
+                device_id="d1",
+                entry_id=2,
+                recorded_at=_ts(2024, 1, 1, 10),
+                vibration_rms=4.0,
+                temperature_celsius=24.0,
+                pressure_bar=1.4,
+            ),
             # device d2: 1 reading in a different hour
-            Row(device_id="d2", entry_id=3, recorded_at=_ts(2024, 1, 1, 11),
-                vibration_rms=6.0, temperature_celsius=30.0, pressure_bar=2.0),
+            Row(
+                device_id="d2",
+                entry_id=3,
+                recorded_at=_ts(2024, 1, 1, 11),
+                vibration_rms=6.0,
+                temperature_celsius=30.0,
+                pressure_bar=2.0,
+            ),
         ]
         return spark.createDataFrame(rows, schema=schema)
 
@@ -133,9 +162,14 @@ class TestComputeHourly:
         result = agg.compute_hourly(self._silver_df(spark))
         cols = set(result.columns)
         for expected in (
-            "device_id", "window_start", "window_end",
-            "avg_vibration_rms", "min_vibration_rms", "max_vibration_rms",
-            "avg_temperature_celsius", "reading_count",
+            "device_id",
+            "window_start",
+            "window_end",
+            "avg_vibration_rms",
+            "min_vibration_rms",
+            "max_vibration_rms",
+            "avg_temperature_celsius",
+            "reading_count",
         ):
             assert expected in cols, f"Missing column: {expected}"
 
@@ -171,10 +205,22 @@ class TestComputeHourly:
         """Null values (sentinel-replaced) must not drag down avg."""
         schema = _silver_schema()
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at=_ts(2024, 1, 1, 10),
-                vibration_rms=None, temperature_celsius=20.0, pressure_bar=1.0),
-            Row(device_id="d1", entry_id=2, recorded_at=_ts(2024, 1, 1, 10),
-                vibration_rms=6.0, temperature_celsius=20.0, pressure_bar=1.0),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at=_ts(2024, 1, 1, 10),
+                vibration_rms=None,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+            ),
+            Row(
+                device_id="d1",
+                entry_id=2,
+                recorded_at=_ts(2024, 1, 1, 10),
+                vibration_rms=6.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
         agg = _make_aggregator(spark)
@@ -193,12 +239,30 @@ class TestComputeDaily:
         schema = _silver_schema()
         rows = [
             # device d1: 3 readings on 2024-01-01
-            Row(device_id="d1", entry_id=1, recorded_at=_ts(2024, 1, 1, 8),
-                vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0),
-            Row(device_id="d1", entry_id=2, recorded_at=_ts(2024, 1, 1, 12),
-                vibration_rms=3.0, temperature_celsius=22.0, pressure_bar=1.2),
-            Row(device_id="d1", entry_id=3, recorded_at=_ts(2024, 1, 1, 16),
-                vibration_rms=5.0, temperature_celsius=24.0, pressure_bar=1.4),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at=_ts(2024, 1, 1, 8),
+                vibration_rms=1.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+            ),
+            Row(
+                device_id="d1",
+                entry_id=2,
+                recorded_at=_ts(2024, 1, 1, 12),
+                vibration_rms=3.0,
+                temperature_celsius=22.0,
+                pressure_bar=1.2,
+            ),
+            Row(
+                device_id="d1",
+                entry_id=3,
+                recorded_at=_ts(2024, 1, 1, 16),
+                vibration_rms=5.0,
+                temperature_celsius=24.0,
+                pressure_bar=1.4,
+            ),
         ]
         return spark.createDataFrame(rows, schema=schema)
 
@@ -207,9 +271,13 @@ class TestComputeDaily:
         result = agg.compute_daily(self._silver_df(spark))
         cols = set(result.columns)
         for expected in (
-            "device_id", "date",
-            "avg_vibration_rms", "min_vibration_rms", "max_vibration_rms",
-            "avg_temperature_celsius", "reading_count",
+            "device_id",
+            "date",
+            "avg_vibration_rms",
+            "min_vibration_rms",
+            "max_vibration_rms",
+            "avg_temperature_celsius",
+            "reading_count",
         ):
             assert expected in cols, f"Missing column: {expected}"
 
@@ -248,10 +316,21 @@ class TestAddZscore:
 
     def test_zscore_column_present(self, spark):
         from datetime import date
+
         schema = self._daily_schema()
         rows = [
-            Row(device_id="d1", date=date(2024, 1, 1), avg_vibration_rms=2.0, reading_count=3),
-            Row(device_id="d1", date=date(2024, 1, 2), avg_vibration_rms=4.0, reading_count=3),
+            Row(
+                device_id="d1",
+                date=date(2024, 1, 1),
+                avg_vibration_rms=2.0,
+                reading_count=3,
+            ),
+            Row(
+                device_id="d1",
+                date=date(2024, 1, 2),
+                avg_vibration_rms=4.0,
+                reading_count=3,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
         result = _make_aggregator(spark).add_zscore(df)
@@ -260,9 +339,15 @@ class TestAddZscore:
     def test_single_row_device_gets_zero_zscore(self, spark):
         """With only one row in the window, stddev is null → z-score defaults to 0.0."""
         from datetime import date
+
         schema = self._daily_schema()
         rows = [
-            Row(device_id="d1", date=date(2024, 1, 1), avg_vibration_rms=5.0, reading_count=2),
+            Row(
+                device_id="d1",
+                date=date(2024, 1, 1),
+                avg_vibration_rms=5.0,
+                reading_count=2,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
         result = _make_aggregator(spark).add_zscore(df).collect()[0]
@@ -271,15 +356,28 @@ class TestAddZscore:
     def test_zscore_is_zero_for_equal_values(self, spark):
         """If both rows in the window have the same value, stddev = 0 → z-score = 0.0."""
         from datetime import date
+
         schema = self._daily_schema()
         rows = [
-            Row(device_id="d1", date=date(2024, 1, 1), avg_vibration_rms=3.0, reading_count=2),
-            Row(device_id="d1", date=date(2024, 1, 2), avg_vibration_rms=3.0, reading_count=2),
+            Row(
+                device_id="d1",
+                date=date(2024, 1, 1),
+                avg_vibration_rms=3.0,
+                reading_count=2,
+            ),
+            Row(
+                device_id="d1",
+                date=date(2024, 1, 2),
+                avg_vibration_rms=3.0,
+                reading_count=2,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
         result = _make_aggregator(spark).add_zscore(df)
         for row in result.collect():
-            assert row["vibration_zscore"] == 0.0, f"Expected 0.0, got {row['vibration_zscore']}"
+            assert (
+                row["vibration_zscore"] == 0.0
+            ), f"Expected 0.0, got {row['vibration_zscore']}"
 
     def test_zscore_magnitude_for_two_row_window(self, spark):
         """
@@ -287,10 +385,21 @@ class TestAddZscore:
         This is a mathematical property of sample std over 2 points.
         """
         from datetime import date
+
         schema = self._daily_schema()
         rows = [
-            Row(device_id="d1", date=date(2024, 1, 1), avg_vibration_rms=1.0, reading_count=2),
-            Row(device_id="d1", date=date(2024, 1, 2), avg_vibration_rms=3.0, reading_count=2),
+            Row(
+                device_id="d1",
+                date=date(2024, 1, 1),
+                avg_vibration_rms=1.0,
+                reading_count=2,
+            ),
+            Row(
+                device_id="d1",
+                date=date(2024, 1, 2),
+                avg_vibration_rms=3.0,
+                reading_count=2,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
         result = (
@@ -305,10 +414,21 @@ class TestAddZscore:
     def test_zscore_partitioned_by_device(self, spark):
         """Devices must be z-scored independently — one device's data must not bleed into another."""
         from datetime import date
+
         schema = self._daily_schema()
         rows = [
-            Row(device_id="d1", date=date(2024, 1, 1), avg_vibration_rms=10.0, reading_count=2),
-            Row(device_id="d2", date=date(2024, 1, 1), avg_vibration_rms=0.1, reading_count=2),
+            Row(
+                device_id="d1",
+                date=date(2024, 1, 1),
+                avg_vibration_rms=10.0,
+                reading_count=2,
+            ),
+            Row(
+                device_id="d2",
+                date=date(2024, 1, 1),
+                avg_vibration_rms=0.1,
+                reading_count=2,
+            ),
         ]
         df = spark.createDataFrame(rows, schema=schema)
         result = _make_aggregator(spark).add_zscore(df)
@@ -325,6 +445,7 @@ class TestAddZscore:
 class TestAddRiskFlag:
     def _zscore_schema(self) -> StructType:
         from datetime import date
+
         return StructType(
             [
                 StructField("device_id", StringType(), nullable=False),
@@ -375,7 +496,9 @@ class TestAddRiskFlag:
             Row(device_id="risky", vibration_zscore=3.5),
         ]
         df = spark.createDataFrame(rows, schema=schema)
-        result = {r["device_id"]: r["is_at_risk"]
-                  for r in _make_aggregator(spark).add_risk_flag(df).collect()}
+        result = {
+            r["device_id"]: r["is_at_risk"]
+            for r in _make_aggregator(spark).add_risk_flag(df).collect()
+        }
         assert result["safe"] is False
         assert result["risky"] is True

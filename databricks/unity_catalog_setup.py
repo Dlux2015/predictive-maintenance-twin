@@ -92,11 +92,17 @@ class UnityCatalogSetup:
             If True, log actions without executing.
         """
         if not iam_role_arn:
-            logger.warning("No IAM role ARN provided — skipping storage credential creation")
+            logger.warning(
+                "No IAM role ARN provided — skipping storage credential creation"
+            )
             return
 
         if dry_run:
-            logger.info("[DRY-RUN] Would create storage credential '%s' with role %s", name, iam_role_arn)
+            logger.info(
+                "[DRY-RUN] Would create storage credential '%s' with role %s",
+                name,
+                iam_role_arn,
+            )
             return
 
         try:
@@ -138,7 +144,9 @@ class UnityCatalogSetup:
             If True, log actions without executing.
         """
         if dry_run:
-            logger.info("[DRY-RUN] Would create external location '%s' → %s", name, s3_url)
+            logger.info(
+                "[DRY-RUN] Would create external location '%s' → %s", name, s3_url
+            )
             return
 
         try:
@@ -187,7 +195,9 @@ class UnityCatalogSetup:
             pass  # catalog not found or permissions issue — attempt creation
 
         try:
-            self._client.catalogs.create(name=catalog_name, comment="Predictive maintenance digital twin")
+            self._client.catalogs.create(
+                name=catalog_name, comment="Predictive maintenance digital twin"
+            )
             logger.info("Created catalog: %s", catalog_name)
         except Exception as exc:
             # On free-tier workspaces the 'main' catalog exists but cannot be re-created
@@ -195,7 +205,8 @@ class UnityCatalogSetup:
             # schema creation succeeds, the catalog is accessible.
             logger.warning(
                 "Could not create catalog '%s' (it may already exist in the UI): %s",
-                catalog_name, exc,
+                catalog_name,
+                exc,
             )
 
     def create_schema(
@@ -231,7 +242,9 @@ class UnityCatalogSetup:
             if "already exists" in str(exc).lower():
                 logger.info("Schema '%s.%s' already exists — skipping", catalog, schema)
             else:
-                logger.error("Failed to create schema '%s.%s': %s", catalog, schema, exc)
+                logger.error(
+                    "Failed to create schema '%s.%s': %s", catalog, schema, exc
+                )
                 raise
         except Exception as exc:
             logger.error("Failed to create schema '%s.%s': %s", catalog, schema, exc)
@@ -261,7 +274,12 @@ class UnityCatalogSetup:
             If True, log actions without executing.
         """
         if dry_run:
-            logger.info("[DRY-RUN] Would grant permissions to '%s' on %s.%s", principal, catalog, schema)
+            logger.info(
+                "[DRY-RUN] Would grant permissions to '%s' on %s.%s",
+                principal,
+                catalog,
+                schema,
+            )
             return
 
         try:
@@ -273,9 +291,16 @@ class UnityCatalogSetup:
             self._client.grants.update(
                 securable_type=SecurableType.SCHEMA,
                 full_name=f"{catalog}.{schema}",
-                changes=[{"principal": principal, "add": ["USE SCHEMA", "SELECT", "MODIFY", "CREATE TABLE"]}],
+                changes=[
+                    {
+                        "principal": principal,
+                        "add": ["USE SCHEMA", "SELECT", "MODIFY", "CREATE TABLE"],
+                    }
+                ],
             )
-            logger.info("Granted permissions to '%s' on %s.%s", principal, catalog, schema)
+            logger.info(
+                "Granted permissions to '%s' on %s.%s", principal, catalog, schema
+            )
         except Exception as exc:
             logger.error("Failed to grant permissions to '%s': %s", principal, exc)
             raise
@@ -316,7 +341,9 @@ class UnityCatalogSetup:
         if iam_role_arn:
             self.create_external_location(dry_run=dry_run)
         else:
-            logger.warning("No IAM role ARN provided — skipping external location creation")
+            logger.warning(
+                "No IAM role ARN provided — skipping external location creation"
+            )
         self.create_catalog(catalog_name=catalog, dry_run=dry_run)
         self.create_schema(catalog=catalog, schema=schema, dry_run=dry_run)
         if principal:
@@ -326,17 +353,32 @@ class UnityCatalogSetup:
 
 def main() -> None:
     """Parse arguments and run Unity Catalog setup."""
-    parser = argparse.ArgumentParser(description="Unity Catalog setup for predictive maintenance")
+    parser = argparse.ArgumentParser(
+        description="Unity Catalog setup for predictive maintenance"
+    )
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--workspace-url", default=os.environ.get("DATABRICKS_HOST", ""))
-    parser.add_argument("--iam-role-arn", default=os.environ.get("AWS_IAM_ROLE_ARN", ""))
+    parser.add_argument(
+        "--workspace-url", default=os.environ.get("DATABRICKS_HOST", "")
+    )
+    parser.add_argument(
+        "--iam-role-arn", default=os.environ.get("AWS_IAM_ROLE_ARN", "")
+    )
     parser.add_argument("--credential-name", default=DEFAULT_CREDENTIAL)
-    parser.add_argument("--catalog", default=os.environ.get("DATABRICKS_CATALOG", DEFAULT_CATALOG),
-                        help="Unity Catalog catalog name (default: workspace)")
-    parser.add_argument("--schema", default=os.environ.get("DATABRICKS_SCHEMA", DEFAULT_SCHEMA),
-                        help="Unity Catalog schema name (default: predictive_maintenance)")
-    parser.add_argument("--principal", default=os.environ.get("DATABRICKS_PRINCIPAL", ""),
-                        help="User/group/SP to grant permissions to")
+    parser.add_argument(
+        "--catalog",
+        default=os.environ.get("DATABRICKS_CATALOG", DEFAULT_CATALOG),
+        help="Unity Catalog catalog name (default: workspace)",
+    )
+    parser.add_argument(
+        "--schema",
+        default=os.environ.get("DATABRICKS_SCHEMA", DEFAULT_SCHEMA),
+        help="Unity Catalog schema name (default: predictive_maintenance)",
+    )
+    parser.add_argument(
+        "--principal",
+        default=os.environ.get("DATABRICKS_PRINCIPAL", ""),
+        help="User/group/SP to grant permissions to",
+    )
     args = parser.parse_args()
 
     client = WorkspaceClient(

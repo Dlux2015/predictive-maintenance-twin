@@ -28,7 +28,12 @@ import os
 
 import boto3
 from botocore.exceptions import ClientError
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -114,12 +119,16 @@ class AlarmSetup:
 
             # Subscribe email (idempotent — duplicate subscriptions are filtered)
             if alert_email:
-                self._sns.subscribe(TopicArn=arn, Protocol="email", Endpoint=alert_email)
+                self._sns.subscribe(
+                    TopicArn=arn, Protocol="email", Endpoint=alert_email
+                )
                 logger.info("Subscribed %s to %s (confirm via email)", alert_email, arn)
 
             return arn
         except ClientError as exc:
-            logger.error("Failed to create SNS topic: %s", exc.response["Error"]["Message"])
+            logger.error(
+                "Failed to create SNS topic: %s", exc.response["Error"]["Message"]
+            )
             raise
 
     def _put_alarm(
@@ -168,7 +177,13 @@ class AlarmSetup:
             SNS topic ARN to notify on alarm.
         """
         if self.dry_run:
-            logger.info("[DRY-RUN] Would create alarm: %s (threshold=%s %s %s)", alarm_name, statistic, comparison, threshold)
+            logger.info(
+                "[DRY-RUN] Would create alarm: %s (threshold=%s %s %s)",
+                alarm_name,
+                statistic,
+                comparison,
+                threshold,
+            )
             return
 
         try:
@@ -190,7 +205,11 @@ class AlarmSetup:
             )
             logger.info("Created/updated alarm: %s", alarm_name)
         except ClientError as exc:
-            logger.error("Failed to create alarm '%s': %s", alarm_name, exc.response["Error"]["Message"])
+            logger.error(
+                "Failed to create alarm '%s': %s",
+                alarm_name,
+                exc.response["Error"]["Message"],
+            )
             raise
 
     def create_ingestion_freshness_alarm(self, sns_arn: str) -> None:
@@ -317,6 +336,7 @@ class AlarmSetup:
             SNS topic ARN for notifications.
         """
         import time
+
         two_hours_ago = time.time() - 7200
 
         self._put_alarm(
@@ -355,14 +375,20 @@ class AlarmSetup:
 
 def main() -> None:
     """Parse arguments and set up CloudWatch alarms."""
-    parser = argparse.ArgumentParser(description="Set up CloudWatch alarms for predictive maintenance")
+    parser = argparse.ArgumentParser(
+        description="Set up CloudWatch alarms for predictive maintenance"
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--alert-email", default=os.environ.get("ALERT_EMAIL", ""))
-    parser.add_argument("--region", default=os.environ.get("AWS_REGION", DEFAULT_REGION))
+    parser.add_argument(
+        "--region", default=os.environ.get("AWS_REGION", DEFAULT_REGION)
+    )
     args = parser.parse_args()
 
     if not args.alert_email and not args.dry_run:
-        logger.warning("No ALERT_EMAIL set — SNS topic will be created without subscriptions")
+        logger.warning(
+            "No ALERT_EMAIL set — SNS topic will be created without subscriptions"
+        )
 
     setup = AlarmSetup(region=args.region, dry_run=args.dry_run)
     setup.setup_all(alert_email=args.alert_email)

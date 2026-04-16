@@ -52,8 +52,16 @@ class TestCheckRowCount:
     def test_passes_when_rows_meet_minimum(self, spark):
         df = _make_df(
             spark,
-            [Row(device_id="d1", entry_id=1, recorded_at="2024-01-01T00:00:00Z",
-                 vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0)],
+            [
+                Row(
+                    device_id="d1",
+                    entry_id=1,
+                    recorded_at="2024-01-01T00:00:00Z",
+                    vibration_rms=1.0,
+                    temperature_celsius=20.0,
+                    pressure_bar=1.0,
+                )
+            ],
         )
         checker = DataQualityChecker(df, "test_table")
         assert checker.check_row_count(min_rows=1) is True
@@ -65,8 +73,14 @@ class TestCheckRowCount:
 
     def test_passes_with_multiple_rows(self, spark):
         rows = [
-            Row(device_id="d1", entry_id=i, recorded_at="2024-01-01T00:00:00Z",
-                vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0)
+            Row(
+                device_id="d1",
+                entry_id=i,
+                recorded_at="2024-01-01T00:00:00Z",
+                vibration_rms=1.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+            )
             for i in range(5)
         ]
         df = _make_df(spark, rows)
@@ -75,8 +89,14 @@ class TestCheckRowCount:
 
     def test_fails_when_below_minimum(self, spark):
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="2024-01-01T00:00:00Z",
-                vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0)
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="2024-01-01T00:00:00Z",
+                vibration_rms=1.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+            )
         ]
         df = _make_df(spark, rows)
         checker = DataQualityChecker(df, "test_table")
@@ -91,10 +111,22 @@ class TestCheckRowCount:
 class TestCheckNullRate:
     def test_passes_when_no_nulls(self, spark):
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="2024-01-01T00:00:00Z",
-                vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0),
-            Row(device_id="d2", entry_id=2, recorded_at="2024-01-01T00:00:00Z",
-                vibration_rms=2.0, temperature_celsius=21.0, pressure_bar=1.1),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="2024-01-01T00:00:00Z",
+                vibration_rms=1.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+            ),
+            Row(
+                device_id="d2",
+                entry_id=2,
+                recorded_at="2024-01-01T00:00:00Z",
+                vibration_rms=2.0,
+                temperature_celsius=21.0,
+                pressure_bar=1.1,
+            ),
         ]
         df = _make_df(spark, rows)
         checker = DataQualityChecker(df, "test_table")
@@ -102,10 +134,22 @@ class TestCheckNullRate:
 
     def test_fails_when_threshold_zero_and_any_null(self, spark):
         rows = [
-            Row(device_id=None, entry_id=1, recorded_at="2024-01-01T00:00:00Z",
-                vibration_rms=1.0, temperature_celsius=20.0, pressure_bar=1.0),
-            Row(device_id="d2", entry_id=2, recorded_at="2024-01-01T00:00:00Z",
-                vibration_rms=2.0, temperature_celsius=21.0, pressure_bar=1.1),
+            Row(
+                device_id=None,
+                entry_id=1,
+                recorded_at="2024-01-01T00:00:00Z",
+                vibration_rms=1.0,
+                temperature_celsius=20.0,
+                pressure_bar=1.0,
+            ),
+            Row(
+                device_id="d2",
+                entry_id=2,
+                recorded_at="2024-01-01T00:00:00Z",
+                vibration_rms=2.0,
+                temperature_celsius=21.0,
+                pressure_bar=1.1,
+            ),
         ]
         df = _make_df(spark, rows)
         checker = DataQualityChecker(df, "test_table")
@@ -113,11 +157,25 @@ class TestCheckNullRate:
 
     def test_passes_when_null_rate_below_threshold(self, spark):
         # 1 null out of 10 rows = 10 % — threshold is 20 %
-        rows = [Row(device_id=None, entry_id=0, recorded_at="t",
-                    vibration_rms=None, temperature_celsius=None, pressure_bar=None)]
+        rows = [
+            Row(
+                device_id=None,
+                entry_id=0,
+                recorded_at="t",
+                vibration_rms=None,
+                temperature_celsius=None,
+                pressure_bar=None,
+            )
+        ]
         rows += [
-            Row(device_id="d1", entry_id=i, recorded_at="t",
-                vibration_rms=1.0, temperature_celsius=1.0, pressure_bar=1.0)
+            Row(
+                device_id="d1",
+                entry_id=i,
+                recorded_at="t",
+                vibration_rms=1.0,
+                temperature_celsius=1.0,
+                pressure_bar=1.0,
+            )
             for i in range(1, 10)
         ]
         df = _make_df(spark, rows)
@@ -126,12 +184,26 @@ class TestCheckNullRate:
 
     def test_fails_when_null_rate_exceeds_threshold(self, spark):
         # 6 nulls out of 10 = 60 % — threshold is 5 %
-        rows = [Row(device_id=None, entry_id=i, recorded_at="t",
-                    vibration_rms=None, temperature_celsius=None, pressure_bar=None)
-                for i in range(6)]
+        rows = [
+            Row(
+                device_id=None,
+                entry_id=i,
+                recorded_at="t",
+                vibration_rms=None,
+                temperature_celsius=None,
+                pressure_bar=None,
+            )
+            for i in range(6)
+        ]
         rows += [
-            Row(device_id="d1", entry_id=i, recorded_at="t",
-                vibration_rms=1.0, temperature_celsius=1.0, pressure_bar=1.0)
+            Row(
+                device_id="d1",
+                entry_id=i,
+                recorded_at="t",
+                vibration_rms=1.0,
+                temperature_celsius=1.0,
+                pressure_bar=1.0,
+            )
             for i in range(6, 10)
         ]
         df = _make_df(spark, rows)
@@ -153,53 +225,104 @@ class TestCheckNullRate:
 class TestCheckValueRange:
     def test_passes_when_all_values_in_range(self, spark):
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="t",
-                vibration_rms=5.0, temperature_celsius=25.0, pressure_bar=1.0),
-            Row(device_id="d1", entry_id=2, recorded_at="t",
-                vibration_rms=10.0, temperature_celsius=30.0, pressure_bar=2.0),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="t",
+                vibration_rms=5.0,
+                temperature_celsius=25.0,
+                pressure_bar=1.0,
+            ),
+            Row(
+                device_id="d1",
+                entry_id=2,
+                recorded_at="t",
+                vibration_rms=10.0,
+                temperature_celsius=30.0,
+                pressure_bar=2.0,
+            ),
         ]
         df = _make_df(spark, rows)
         checker = DataQualityChecker(df, "test_table")
-        assert checker.check_value_range("vibration_rms", min_val=0.0, max_val=500.0) is True
+        assert (
+            checker.check_value_range("vibration_rms", min_val=0.0, max_val=500.0)
+            is True
+        )
 
     def test_fails_when_value_above_max(self, spark):
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="t",
-                vibration_rms=999.0, temperature_celsius=25.0, pressure_bar=1.0),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="t",
+                vibration_rms=999.0,
+                temperature_celsius=25.0,
+                pressure_bar=1.0,
+            ),
         ]
         df = _make_df(spark, rows)
         checker = DataQualityChecker(df, "test_table")
-        assert checker.check_value_range("vibration_rms", min_val=0.0, max_val=500.0) is False
+        assert (
+            checker.check_value_range("vibration_rms", min_val=0.0, max_val=500.0)
+            is False
+        )
 
     def test_fails_when_value_below_min(self, spark):
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="t",
-                vibration_rms=-5.0, temperature_celsius=25.0, pressure_bar=1.0),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="t",
+                vibration_rms=-5.0,
+                temperature_celsius=25.0,
+                pressure_bar=1.0,
+            ),
         ]
         df = _make_df(spark, rows)
         checker = DataQualityChecker(df, "test_table")
         # Sentinel (-1.0) is the floor, so -5.0 is out of range
-        assert checker.check_value_range("vibration_rms", min_val=-1.0, max_val=500.0) is False
+        assert (
+            checker.check_value_range("vibration_rms", min_val=-1.0, max_val=500.0)
+            is False
+        )
 
     def test_passes_with_sentinel_value(self, spark):
         """Sentinel value -1.0 should be within the Silver-layer range [-1.0, 500.0]."""
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="t",
-                vibration_rms=-1.0, temperature_celsius=-1.0, pressure_bar=-1.0),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="t",
+                vibration_rms=-1.0,
+                temperature_celsius=-1.0,
+                pressure_bar=-1.0,
+            ),
         ]
         df = _make_df(spark, rows)
         checker = DataQualityChecker(df, "test_table")
-        assert checker.check_value_range("vibration_rms", min_val=-1.0, max_val=500.0) is True
+        assert (
+            checker.check_value_range("vibration_rms", min_val=-1.0, max_val=500.0)
+            is True
+        )
 
     def test_nulls_are_ignored(self, spark):
         """Null values must not be counted as out-of-range."""
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="t",
-                vibration_rms=None, temperature_celsius=25.0, pressure_bar=1.0),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="t",
+                vibration_rms=None,
+                temperature_celsius=25.0,
+                pressure_bar=1.0,
+            ),
         ]
         df = _make_df(spark, rows)
         checker = DataQualityChecker(df, "test_table")
-        assert checker.check_value_range("vibration_rms", min_val=0.0, max_val=500.0) is True
+        assert (
+            checker.check_value_range("vibration_rms", min_val=0.0, max_val=500.0)
+            is True
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -210,8 +333,14 @@ class TestCheckValueRange:
 class TestRunAllChecks:
     def test_returns_dict_of_results(self, spark):
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="2024-01-01T00:00:00Z",
-                vibration_rms=5.0, temperature_celsius=25.0, pressure_bar=1.0),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="2024-01-01T00:00:00Z",
+                vibration_rms=5.0,
+                temperature_celsius=25.0,
+                pressure_bar=1.0,
+            ),
         ]
         df = _make_df(spark, rows)
         checker = DataQualityChecker(df, "test_table")
@@ -223,8 +352,14 @@ class TestRunAllChecks:
 
     def test_all_pass_on_clean_data(self, spark):
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="2024-01-01T00:00:00Z",
-                vibration_rms=5.0, temperature_celsius=25.0, pressure_bar=1.0),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="2024-01-01T00:00:00Z",
+                vibration_rms=5.0,
+                temperature_celsius=25.0,
+                pressure_bar=1.0,
+            ),
         ]
         df = _make_df(spark, rows)
         checker = DataQualityChecker(df, "test_table")
@@ -233,8 +368,14 @@ class TestRunAllChecks:
 
     def test_log_summary_does_not_raise(self, spark):
         rows = [
-            Row(device_id="d1", entry_id=1, recorded_at="2024-01-01T00:00:00Z",
-                vibration_rms=5.0, temperature_celsius=25.0, pressure_bar=1.0),
+            Row(
+                device_id="d1",
+                entry_id=1,
+                recorded_at="2024-01-01T00:00:00Z",
+                vibration_rms=5.0,
+                temperature_celsius=25.0,
+                pressure_bar=1.0,
+            ),
         ]
         df = _make_df(spark, rows)
         checker = DataQualityChecker(df, "test_table")

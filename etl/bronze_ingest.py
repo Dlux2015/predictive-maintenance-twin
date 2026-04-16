@@ -48,7 +48,12 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
-from etl.utils import DataQualityChecker, get_spark_session, log_table_stats, publish_pipeline_metric
+from etl.utils import (
+    DataQualityChecker,
+    get_spark_session,
+    log_table_stats,
+    publish_pipeline_metric,
+)
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -120,16 +125,18 @@ class BronzeIngestor:
         -------
         StructType matching ingestion/schema.json.
         """
-        return StructType([
-            StructField("device_id", StringType(), nullable=True),
-            StructField("entry_id", LongType(), nullable=True),
-            StructField("recorded_at", StringType(), nullable=True),
-            StructField("vibration_rms", DoubleType(), nullable=True),
-            StructField("temperature_celsius", DoubleType(), nullable=True),
-            StructField("pressure_bar", DoubleType(), nullable=True),
-            StructField("source_channel", IntegerType(), nullable=True),
-            StructField("ingested_at", StringType(), nullable=True),
-        ])
+        return StructType(
+            [
+                StructField("device_id", StringType(), nullable=True),
+                StructField("entry_id", LongType(), nullable=True),
+                StructField("recorded_at", StringType(), nullable=True),
+                StructField("vibration_rms", DoubleType(), nullable=True),
+                StructField("temperature_celsius", DoubleType(), nullable=True),
+                StructField("pressure_bar", DoubleType(), nullable=True),
+                StructField("source_channel", IntegerType(), nullable=True),
+                StructField("ingested_at", StringType(), nullable=True),
+            ]
+        )
 
     def read_with_autoloader(
         self, checkpoint_path: str = DEFAULT_CHECKPOINT
@@ -152,14 +159,18 @@ class BronzeIngestor:
         Streaming DataFrame of raw sensor records.
         """
         logger.info(
-            "Configuring Auto Loader: source=%s checkpoint=%s", self.source_path, checkpoint_path
+            "Configuring Auto Loader: source=%s checkpoint=%s",
+            self.source_path,
+            checkpoint_path,
         )
         return (
             self.spark.readStream.format("cloudFiles")
             .option("cloudFiles.format", "json")
             .option("cloudFiles.schemaLocation", checkpoint_path + "/_schema")
             .option("cloudFiles.inferColumnTypes", "false")
-            .option("cloudFiles.useNotifications", "false")  # directory listing — works for DBFS and S3
+            .option(
+                "cloudFiles.useNotifications", "false"
+            )  # directory listing — works for DBFS and S3
             .schema(self.get_schema())
             .load(self.source_path)
         )
@@ -184,9 +195,10 @@ class BronzeIngestor:
         """
         batch_id = str(uuid.uuid4())
         return (
-            df
-            .withColumn("_ingested_at", F.current_timestamp())
-            .withColumn("_source_file", F.col("_metadata.file_path"))  # UC: input_file_name() not supported
+            df.withColumn("_ingested_at", F.current_timestamp())
+            .withColumn(
+                "_source_file", F.col("_metadata.file_path")
+            )  # UC: input_file_name() not supported
             .withColumn("_batch_id", F.lit(batch_id))
         )
 
@@ -212,9 +224,15 @@ class BronzeIngestor:
             If True, process all available files once and stop (useful for
             scheduled jobs). If False, run as a continuous stream.
         """
-        trigger_config = {"once": True} if trigger_once else {"processingTime": "30 seconds"}
+        trigger_config = (
+            {"once": True} if trigger_once else {"processingTime": "30 seconds"}
+        )
 
-        logger.info("Writing to Bronze table: %s (trigger_once=%s)", self.table_name, trigger_once)
+        logger.info(
+            "Writing to Bronze table: %s (trigger_once=%s)",
+            self.table_name,
+            trigger_once,
+        )
 
         query = (
             df.withColumn("_partition_date", F.to_date(F.col("recorded_at")))
@@ -267,11 +285,14 @@ class BronzeIngestor:
         except Exception as exc:
             logger.info("Skipping DQ pre-check (table may not exist yet): %s", exc)
 
-        self.write_bronze(enriched_df, checkpoint_path=checkpoint_path, trigger_once=trigger_once)
+        self.write_bronze(
+            enriched_df, checkpoint_path=checkpoint_path, trigger_once=trigger_once
+        )
 
         # Post-write stats
         try:
             from etl.utils import get_table_row_count
+
             row_count = get_table_row_count(self.spark, self.table_name)
             publish_pipeline_metric("BronzeRowCount", float(row_count), "Count")
             logger.info("Bronze table row count: %d", row_count)
@@ -286,8 +307,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Bronze layer ingestion: raw JSON (DBFS or S3) → Delta"
     )
-    parser.add_argument("--trigger-once", action="store_true", default=True,
-                        help="Process all available files once and stop")
+    parser.add_argument(
+        "--trigger-once",
+        action="store_true",
+        default=True,
+        help="Process all available files once and stop",
+    )
     parser.add_argument(
         "--source-path",
         default=DEFAULT_SOURCE_PATH,
