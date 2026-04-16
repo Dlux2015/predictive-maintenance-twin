@@ -257,10 +257,17 @@ class GoldAggregator:
             Three-part Delta table name.
         """
         logger.info("Writing to Gold table: %s (%d rows)", table_name, df.count())
-        self.spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
 
+        # spark.conf.set is not available in Spark Connect; pass as writer option instead
         partition_col = "date" if "date" in df.columns else "window_start"
-        write_delta_table(df, table_name, mode="overwrite", partition_cols=[partition_col])
+        (
+            df.write
+            .format("delta")
+            .mode("overwrite")
+            .option("partitionOverwriteMode", "dynamic")
+            .partitionBy(partition_col)
+            .saveAsTable(table_name)
+        )
         logger.info("Write complete: %s", table_name)
 
     def optimize_tables(self) -> None:
